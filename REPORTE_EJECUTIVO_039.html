@@ -763,9 +763,17 @@ window.p039_guardarDia=async function(){
   Object.keys(b.items).forEach(rid=>{
     const it=b.items[rid]; if(!it.on) return;
     const r=_p039_renglones.find(x=>x.id===rid); if(!r) return;
-    if(p039_num(it.cantidad)!==p039_num(r.cantidad) && !(it.obs||'').trim()) faltan.push(r.descripcion);
+    if(p039_num(it.cantidad)!==p039_num(r.cantidad) && !(it.obs||'').trim()) faltan.push({rid,r});
   });
-  if(faltan.length){ alert('Cambiaste la cantidad en estos renglones pero les falta la observación de por qué:\n\n• '+faltan.join('\n• ')); return; }
+  if(faltan.length){
+    const primero=faltan[0];
+    _p039_catSegAbierta=primero.r.categoria; // abre justo la categoría donde falta, para que se vea sin buscarle
+    renderCostos();
+    const obsEl=document.getElementById('p039_obs_'+primero.rid);
+    if(obsEl){ obsEl.scrollIntoView({behavior:'smooth',block:'center'}); obsEl.focus(); }
+    alert('No se guardó — falta la observación en '+faltan.length+' renglón(es) donde cambiaste la cantidad:\n\n• '+faltan.map(f=>f.r.descripcion).join('\n• ')+'\n\nTe dejé abierto y marcado el primero ("'+primero.r.descripcion+'"). Escribe la observación ahí (y en los demás si hay más) y vuelve a picar Guardar día.');
+    return;
+  }
   const nuevos=p039_registrosDeDia(b.fecha, b.items);
   const resto=_p039_gastos.filter(g=>g.fecha!==b.fecha);
   const ok=await guardarP039('gastos', [...resto, ...nuevos]);
@@ -1033,13 +1041,16 @@ function buildCostos(){
 function renderCostos(){
   const el=document.getElementById('costosRoot'); if(!el) return;
   // Antes de redibujar: guardar qué campo tenía el foco (y en qué posición del texto),
-  // más el scroll de la página. Así, al escribir un número o cambiar de día, la pantalla
-  // no "brinca" ni se pierde el cursor a media escritura.
+  // el scroll de la página, y el scroll horizontal de la franja de días. Así, al escribir
+  // un número, cambiar de día o guardar (lo cual dispara otro redibujado automático por el
+  // aviso de Firestore), la pantalla no "brinca" ni la franja regresa a los primeros días.
   const activo=document.activeElement;
   const focusId = (activo && activo.id && el.contains(activo)) ? activo.id : null;
   const selStart = (focusId && activo.selectionStart!=null) ? activo.selectionStart : null;
   const selEnd = (focusId && activo.selectionEnd!=null) ? activo.selectionEnd : null;
   const scrollY = window.scrollY;
+  const franjaPrev=document.getElementById('p039_franja');
+  const franjaScroll = franjaPrev ? franjaPrev.scrollLeft : null;
 
   el.innerHTML=_p039Render();
 
@@ -1050,6 +1061,7 @@ function renderCostos(){
       if(selStart!=null && nuevo.setSelectionRange){ try{ nuevo.setSelectionRange(selStart, selEnd); }catch(e){} }
     }
   }
+  if(franjaScroll!=null){ const franjaNueva=document.getElementById('p039_franja'); if(franjaNueva) franjaNueva.scrollLeft=franjaScroll; }
   window.scrollTo(0, scrollY);
 }
 
@@ -1524,7 +1536,7 @@ function _p039RenderSeguimiento(){
     <div class="card-body">
       <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
         <button class="btn-exp" ${idx<=0?'disabled style="opacity:.4"':''} onclick="p039_setDia('${dias[Math.max(0,idx-1)]}')">←</button>
-        <div style="flex:1;overflow-x:auto;display:flex;gap:4px;padding:2px">${franja}</div>
+        <div id="p039_franja" style="flex:1;overflow-x:auto;display:flex;gap:4px;padding:2px">${franja}</div>
         <button class="btn-exp" ${idx>=dias.length-1?'disabled style="opacity:.4"':''} onclick="p039_setDia('${dias[Math.min(dias.length-1,idx+1)]}')">→</button>
       </div>
       <div style="font-size:11px;color:var(--gray)">Los días con ✓ ya tienen captura guardada. La franja solo muestra días con obra capturada en viajes.</div>
