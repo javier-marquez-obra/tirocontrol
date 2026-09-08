@@ -744,7 +744,9 @@ function p039_registrosDeDia(fecha, items){
   });
   return out;
 }
-window.p039_setDia=function(fecha){ _p039_fechaSel=fecha; p039_abrirDia(fecha); renderCostos(); };
+window.p039_setDia=function(fecha){ _p039_fechaSel=fecha; p039_abrirDia(fecha); renderCostos();
+  const btn=document.getElementById('p039_dia_activo'); if(btn) btn.scrollIntoView({inline:'center', block:'nearest'});
+};
 window.p039_setItem=function(rid,campo,valor){
   if(!_p039_borrador) return;
   const it=_p039_borrador.items[rid]; if(!it) return;
@@ -1028,7 +1030,28 @@ function buildCostos(){
   return `<div class="section-hdr">💰 Costos — presupuesto y gastos de obra</div>
   <div id="costosRoot">${_p039Render()}</div>`;
 }
-function renderCostos(){ const el=document.getElementById('costosRoot'); if(el) el.innerHTML=_p039Render(); }
+function renderCostos(){
+  const el=document.getElementById('costosRoot'); if(!el) return;
+  // Antes de redibujar: guardar qué campo tenía el foco (y en qué posición del texto),
+  // más el scroll de la página. Así, al escribir un número o cambiar de día, la pantalla
+  // no "brinca" ni se pierde el cursor a media escritura.
+  const activo=document.activeElement;
+  const focusId = (activo && activo.id && el.contains(activo)) ? activo.id : null;
+  const selStart = (focusId && activo.selectionStart!=null) ? activo.selectionStart : null;
+  const selEnd = (focusId && activo.selectionEnd!=null) ? activo.selectionEnd : null;
+  const scrollY = window.scrollY;
+
+  el.innerHTML=_p039Render();
+
+  if(focusId){
+    const nuevo=document.getElementById(focusId);
+    if(nuevo){
+      nuevo.focus({preventScroll:true});
+      if(selStart!=null && nuevo.setSelectionRange){ try{ nuevo.setSelectionRange(selStart, selEnd); }catch(e){} }
+    }
+  }
+  window.scrollTo(0, scrollY);
+}
 
 function _p039Render(){
   const renglones=_p039_renglones||[];
@@ -1488,7 +1511,7 @@ function _p039RenderSeguimiento(){
   const franja=dias.map(d=>{
     const tiene=p039_gastosDe(d).length>0, act=d===fecha;
     const dt=new Date(d+'T12:00:00');
-    return `<button onclick="p039_setDia('${d}')" style="flex:0 0 auto;border:1px solid ${act?'var(--blue)':(tiene?'#059669':'var(--gray2)')};background:${act?'var(--blue)':'var(--white)'};color:${act?'#fff':'var(--txt3)'};border-radius:8px;padding:5px 8px;cursor:pointer;text-align:center;min-width:46px">
+    return `<button id="${act?'p039_dia_activo':''}" onclick="p039_setDia('${d}')" style="flex:0 0 auto;border:1px solid ${act?'var(--blue)':(tiene?'#059669':'var(--gray2)')};background:${act?'var(--blue)':'var(--white)'};color:${act?'#fff':'var(--txt3)'};border-radius:8px;padding:5px 8px;cursor:pointer;text-align:center;min-width:46px">
       <div style="font-size:9px;opacity:.8">${['dom','lun','mar','mié','jue','vie','sáb'][dt.getDay()]}</div>
       <div style="font-size:13px;font-weight:800">${dt.getDate()}</div>
       <div style="font-size:8px">${_mesCorto[dt.getMonth()]}${tiene?' ✓':''}</div>
@@ -1542,9 +1565,9 @@ function _p039RenderSeguimiento(){
           </div>
           ${it.on?`<div style="display:flex;gap:6px;margin-top:8px;align-items:center">
             <div style="flex:0 0 92px"><label style="font-size:9px;color:var(--gray);text-transform:uppercase">Cantidad</label>
-              <input value="${it.cantidad}" oninput="p039_setItem('${r.id}','cantidad',this.value)" style="width:100%;padding:6px;border:1px solid ${cambio?'#b45309':'var(--gray2)'};border-radius:6px;font-family:monospace;font-size:12px"></div>
+              <input id="p039_cant_${r.id}" value="${it.cantidad}" oninput="p039_setItem('${r.id}','cantidad',this.value)" inputmode="decimal" style="width:100%;padding:6px;border:1px solid ${cambio?'#b45309':'var(--gray2)'};border-radius:6px;font-family:monospace;font-size:12px"></div>
             <div style="flex:1"><label style="font-size:9px;color:${cambio?'#b45309':'var(--gray)'};text-transform:uppercase">Observación${cambio?' (obligatoria)':''}</label>
-              <input value="${(it.obs||'').replace(/"/g,'&quot;')}" oninput="p039_setItem('${r.id}','obs',this.value)" placeholder="${cambio?'¿Por qué cambió la cantidad hoy?':'Opcional'}" style="width:100%;padding:6px;border:1px solid ${cambio&&!(it.obs||'').trim()?'#dc2626':'var(--gray2)'};border-radius:6px;font-size:11px"></div>
+              <input id="p039_obs_${r.id}" value="${(it.obs||'').replace(/"/g,'&quot;')}" oninput="p039_setItem('${r.id}','obs',this.value)" placeholder="${cambio?'¿Por qué cambió la cantidad hoy?':'Opcional'}" style="width:100%;padding:6px;border:1px solid ${cambio&&!(it.obs||'').trim()?'#dc2626':'var(--gray2)'};border-radius:6px;font-size:11px"></div>
           </div>
           ${(r.categoria==='maquinaria'&&p039_num(r.litrosPorDia)>0&&precioComb>0)?`<div style="font-size:10px;color:#7c3aed;margin-top:6px">⛽ + ${p039_money(p039_num(r.litrosPorDia)*p039_num(it.cantidad)*precioComb)} de combustible (${p039_num(r.litrosPorDia)} L/día × ${p039_num(it.cantidad)})</div>`:''}`:''}
         </div>`;
