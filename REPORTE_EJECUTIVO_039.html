@@ -684,7 +684,27 @@ function p039_acumuladoAnterior(est){
 // ═══ SEGUIMIENTO DIARIO ═══
 // Categorías que se dan por hecho todos los días: si el renglón está activo en el presupuesto,
 // el día abre con ellas ya marcadas y con su cantidad presupuestada. El resto se marca a mano.
-const P039_AUTO_DIARIO=['mano_obra','maquinaria'];
+const P039_AUTO_DIARIO=['mano_obra','maquinaria']; // regla legado por categoría, usada solo si el renglón no tiene configuración propia
+// Si el renglón trae autoDiario configurado explícitamente (true/false), eso manda sobre la
+// regla vieja por categoría — así CUALQUIER renglón (incluyendo indirectos como honorarios o
+// el residente) puede activarse para auto-marcarse cada día, no solo mano de obra/maquinaria.
+function p039_esAutoDiario(r){
+  if(r.autoDiario===true) return true;
+  if(r.autoDiario===false) return false;
+  return P039_AUTO_DIARIO.includes(r.categoria);
+}
+window.p039_configurarAutoRelleno=async function(rid){
+  const r=_p039_renglones.find(x=>x.id===rid); if(!r) return;
+  const esAuto=p039_esAutoDiario(r);
+  const activar=confirm(`"${r.descripcion}"\n\n¿Quieres que este renglón se auto-marque solo cada día nuevo (para no tener que activarlo a mano)?\n\nActualmente: ${esAuto?'SÍ se auto-marca':'NO se auto-marca'}.\n\nAceptar = activar auto-marcado · Cancelar = desactivarlo`);
+  r.autoDiario=activar;
+  if(activar){
+    const fuente=prompt(`¿De dónde va a salir el dato con el que se auto-rellena "${r.descripcion}" cada día nuevo?\n\nEscribe un número fijo o una fórmula (ej. =32000/30 o 12500*2). Déjalo vacío para usar siempre el presupuestado (${p039_num(r.cantidad)}).`, r.autoRelleno||'');
+    if(fuente!=null) r.autoRelleno=fuente.trim();
+  }
+  const ok=await guardarP039('renglones', _p039_renglones);
+  if(ok) renderCostos();
+};
 let _p039_fechaSel=null;     // día que se está capturando (ISO)
 let _p039_borrador=null;     // {fecha, items:{renglonId:{on,cantidad,obs}}}
 let _p039_catSegAbierta=null;
@@ -706,19 +726,28 @@ function p039_abrirDia(fecha){
   const items={};
   _p039_renglones.filter(r=>r.activo!==false).forEach(r=>{
     const g=guardados.find(x=>x.renglonId===r.id);
-    if(g) items[r.id]={on:true, cantidad:String(g.cantidad), obs:g.obs||''};
-    else if(!yaCapturado && P039_AUTO_DIARIO.includes(r.categoria)) items[r.id]={on:true, cantidad:String(p039_num(r.cantidad)), obs:''};
-    else items[r.id]={on:false, cantidad:String(p039_num(r.cantidad)), obs:''};
+    // "original" es lo que ya estaba GUARDADO para este renglón en este día (null si es primera vez).
+    // La observación solo se exige cuando cambias algo que ya estaba guardado, no en la primera captura.
+    if(g) items[r.id]={on:true, cantidad:String(g.cantidad), obs:g.obs||'', original:p039_num(g.cantidad)};
+    else if(!yaCapturado && p039_esAutoDiario(r)) items[r.id]={on:true, cantidad:String(p039_num((r.autoRelleno!=null&&String(r.autoRelleno).trim()!=='')?r.autoRelleno:r.cantidad)), obs:'', original:null};
+    else items[r.id]={on:false, cantidad:String(p039_num(r.cantidad)), obs:'', original:null};
   });
   _p039_borrador={fecha, items};
 }
-// Días con obra: se toman de los viajes capturados (allRecs) más los días que ya tengan gasto,
-// para que la franja muestre exactamente los días que existen en la obra, no un calendario vacío.
+// Días con obra: antes solo se tomaban los días que tuvieran viajes capturados, lo que dejaba
+// fuera días sin tiro (vacaciones, lluvia, etc.) — pero ahí igual corren indirectos como honorarios
+// o el residente de apoyo. Ahora se muestra TODO el rango desde el inicio de la obra hasta hoy,
+// más cualquier día que ya tenga viajes o gasto capturado (por si cae fuera de ese rango).
 function p039_diasObra(){
   const s=new Set();
   (typeof allRecs!=='undefined'?allRecs:[]).forEach(r=>{ if(r.fecha) s.add(r.fecha); });
   _p039_gastos.forEach(g=>{ if(g.fecha) s.add(g.fecha); });
   const hoy=p039_hoyISO(); s.add(hoy);
+  const ini=_p039_config.fechaInicioReal||_p039_config.fechaInicioContrato;
+  if(ini && /^\d{4}-\d{2}-\d{2}$/.test(ini)){
+    let d=new Date(ini+'T12:00:00'); const fin=new Date(hoy+'T12:00:00');
+    while(d<=fin){ s.add(d.toISOString().slice(0,10)); d.setDate(d.getDate()+1); }
+  }
   return [...s].sort();
 }
 // Construye los registros a guardar de un día a partir del borrador (o de un renglón-plantilla,
@@ -763,7 +792,7 @@ window.p039_guardarDia=async function(){
   Object.keys(b.items).forEach(rid=>{
     const it=b.items[rid]; if(!it.on) return;
     const r=_p039_renglones.find(x=>x.id===rid); if(!r) return;
-    if(p039_num(it.cantidad)!==p039_num(r.cantidad) && !(it.obs||'').trim()) faltan.push({rid,r});
+    if(it.original!=null && p039_num(it.cantidad)!==it.original && !(it.obs||'').trim()) faltan.push({rid,r});
   });
   if(faltan.length){
     const primero=faltan[0];
@@ -1539,7 +1568,7 @@ function _p039RenderSeguimiento(){
         <div id="p039_franja" style="flex:1;overflow-x:auto;display:flex;gap:4px;padding:2px">${franja}</div>
         <button class="btn-exp" ${idx>=dias.length-1?'disabled style="opacity:.4"':''} onclick="p039_setDia('${dias[Math.min(dias.length-1,idx+1)]}')">→</button>
       </div>
-      <div style="font-size:11px;color:var(--gray)">Los días con ✓ ya tienen captura guardada. La franja solo muestra días con obra capturada en viajes.</div>
+      <div style="font-size:11px;color:var(--gray)">Los días con ✓ ya tienen captura guardada.</div>
     </div>
   </div>`;
 
@@ -1559,18 +1588,19 @@ function _p039RenderSeguimiento(){
     const nOn=rs.filter(r=>b.items[r.id]&&b.items[r.id].on).length;
     const subtotal=rs.reduce((s,r)=>{ const it=b.items[r.id]; return s+((it&&it.on)?p039_costoDiario(r,it.cantidad):0); },0);
     const abierta=_p039_catSegAbierta===c.key;
-    const auto=P039_AUTO_DIARIO.includes(c.key);
+    const auto=rs.some(r=>p039_esAutoDiario(r));
     const detalle=abierta?`<div class="card-body" style="border-top:1px solid var(--gray2)">
       ${rs.map(r=>{
-        const it=b.items[r.id]||{on:false,cantidad:'',obs:''};
-        const cambio=p039_num(it.cantidad)!==p039_num(r.cantidad);
+        const it=b.items[r.id]||{on:false,cantidad:'',obs:'',original:null};
+        const cambio=it.original!=null && p039_num(it.cantidad)!==it.original;
         return `<div style="background:${it.on?'var(--surf)':'transparent'};border:1px solid ${it.on?(cambio?'#b45309':'var(--gray2)'):'var(--gray2)'};border-radius:8px;padding:10px;margin-bottom:6px;opacity:${it.on?1:.55}">
           <div style="display:flex;align-items:flex-start;gap:8px">
             <input type="checkbox" ${it.on?'checked':''} onchange="p039_setItem('${r.id}','on',this.checked)" style="margin-top:3px;width:17px;height:17px;flex:0 0 auto">
             <div style="flex:1;min-width:0">
-              <div style="font-weight:700;font-size:12px">${r.descripcion}</div>
+              <div style="font-weight:700;font-size:12px">${r.descripcion} ${p039_esAutoDiario(r)?'<span style="font-size:8px;font-weight:700;color:#059669;border:1px solid #059669;border-radius:4px;padding:1px 4px;margin-left:2px">AUTO</span>':''}</div>
               <div style="font-size:10px;color:var(--gray)">${r.codigo?r.codigo+' · ':''}presupuestado ${p039_num(r.cantidad)} ${r.categoria==='mano_obra'?'persona(s)':(r.unidad||'')} × ${p039_money(r.pu)}</div>
             </div>
+            <button onclick="p039_configurarAutoRelleno('${r.id}')" title="Configurar si este renglón se auto-marca cada día y de dónde sale el dato" style="flex:0 0 auto;background:none;border:1px solid var(--gray2);border-radius:6px;padding:3px 6px;cursor:pointer;font-size:12px;align-self:flex-start">⚙️</button>
             <div style="text-align:right;flex:0 0 auto">
               <div style="font-size:12px;font-weight:800;font-family:monospace;color:${it.on?'var(--gold)':'var(--gray)'}">${it.on?p039_money(p039_costoDiario(r,it.cantidad)):'—'}</div>
             </div>
