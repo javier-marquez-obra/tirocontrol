@@ -1986,19 +1986,24 @@ function _resumenTotalesConcepto(recs, conceptoSel, carrilSel){
 //               es decir, viendo el total de la obra completa; con fecha filtrada, el "inicio" sería
 //               el inicio de ESE rango, no el arranque real de la obra, y confundiría más que ayudar)
 // mlProm      = promedio de cuánto avanzó cada carril (su propio ka−kde, carril por carril)
-// Cadenamiento por carril, filtrado por concepto y carril:
+// Cadenamiento por carril — usa la MISMA clasificación que el larguillo (solo CARPETA cuenta como
+// avance de tramo; reniv/bacheo son correcciones puntuales, nunca se mezclan aquí) y solo toma
+// carriles OFICIALES del tramo (L. Izq./Central/L. Der., según la obra) — un paradero u otro carril
+// suelto que se haya agregado no es un carril de avance y se excluye siempre, sin excepción.
 // - cadInicial = el cadenamiento inicial de la obra/tramo (el punto más atrás de TODOS los carriles combinados)
 // - mlProm     = promedio de la distancia de cada carril por separado (su propio ka−kde, carril por carril)
-// - kmProm     = cadInicial + mlProm, tal como se pidió: sumar los carriles por separado, sacar el
-//                promedio de esa distancia, y sumarlo al cadenamiento inicial.
+// - kmProm     = cadInicial + mlProm
 function _resumenCadCarriles(recs, conceptoSel, carrilSel){
   const porTramo={};
   recs.forEach(r=>{
     const cs=(r.conceptos&&r.conceptos.length)?r.conceptos:[{kde:r.kde,ka:r.ka,carril:r.carril,id:r.concepto}];
     cs.forEach(c=>{
-      if(!c.carril) return;
+      if(!c.carril || !c.id) return;
+      if(/^RENIV/i.test(c.id) || /^BACHEO/i.test(c.id)) return; // nunca cuenta para km/ML, solo carpeta
       if(conceptoSel!=='__todos__' && c.id!==conceptoSel) return;
       if(carrilSel!=='__todos__' && c.carril!==carrilSel) return;
+      const oficiales=carrilesDeConcepto(c.id).map(x=>(x.label||'').trim().toUpperCase());
+      if(!oficiales.includes((c.carril||'').trim().toUpperCase())) return; // excluye paraderos/carriles ad-hoc
       const tramo=tramoDeConcepto(c.id);
       if(!porTramo[tramo]) porTramo[tramo]={};
       const pc=porTramo[tramo];
@@ -2011,13 +2016,16 @@ function _resumenCadCarriles(recs, conceptoSel, carrilSel){
   const out={};
   Object.keys(porTramo).forEach(tramo=>{
     const carriles=Object.keys(porTramo[tramo]);
-    const distancias=[]; let cadInicial=null;
+    const mins=[], distancias=[];
     carriles.forEach(k=>{
       const o=porTramo[tramo][k];
+      if(o.min!=null) mins.push(o.min);
       if(o.min!=null&&o.max!=null) distancias.push(o.max-o.min);
-      if(o.min!=null) cadInicial = cadInicial==null?o.min:Math.min(cadInicial,o.min);
     });
-    if(distancias.length){
+    if(distancias.length && mins.length){
+      // cadInicial = promedio de los mínimos por carril (no el mínimo absoluto) — así coincide
+      // exactamente con la lógica ya usada en el larguillo (_cadPromedioCarriles: "ini").
+      const cadInicial=mins.reduce((a,b)=>a+b,0)/mins.length;
       const mlProm=distancias.reduce((a,b)=>a+b,0)/distancias.length;
       out[tramo]={ cadInicial, mlProm, kmProm: cadInicial+mlProm, n: carriles.length };
     }
@@ -2037,7 +2045,7 @@ function _renderResumenRapido(){
   );
   const tot=_resumenTotalesConcepto(recs, conceptoSel, carrilSel);
   const rango=_resumenCadCarriles(recs, conceptoSel, carrilSel);
-  const tramos=Object.keys(rango);
+  const tramos=Object.keys(rango).sort();
 
   // Cuando se filtra por UNA obra específica, solo se muestra el/los tramo(s) de esa obra —
   // ya vienen aislados porque "recs" ya está filtrado por obraSel antes de llegar aquí.
