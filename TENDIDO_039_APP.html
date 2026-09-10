@@ -1986,6 +1986,11 @@ function _resumenTotalesConcepto(recs, conceptoSel, carrilSel){
 //               es decir, viendo el total de la obra completa; con fecha filtrada, el "inicio" sería
 //               el inicio de ESE rango, no el arranque real de la obra, y confundiría más que ayudar)
 // mlProm      = promedio de cuánto avanzó cada carril (su propio ka−kde, carril por carril)
+// Cadenamiento por carril, filtrado por concepto y carril:
+// - cadInicial = el cadenamiento inicial de la obra/tramo (el punto más atrás de TODOS los carriles combinados)
+// - mlProm     = promedio de la distancia de cada carril por separado (su propio ka−kde, carril por carril)
+// - kmProm     = cadInicial + mlProm, tal como se pidió: sumar los carriles por separado, sacar el
+//                promedio de esa distancia, y sumarlo al cadenamiento inicial.
 function _resumenCadCarriles(recs, conceptoSel, carrilSel){
   const porTramo={};
   recs.forEach(r=>{
@@ -2006,19 +2011,16 @@ function _resumenCadCarriles(recs, conceptoSel, carrilSel){
   const out={};
   Object.keys(porTramo).forEach(tramo=>{
     const carriles=Object.keys(porTramo[tramo]);
-    const finales=[], iniciales=[], longitudes=[];
+    const distancias=[]; let cadInicial=null;
     carriles.forEach(k=>{
       const o=porTramo[tramo][k];
-      if(o.max!=null) finales.push(o.max);
-      if(o.min!=null) iniciales.push(o.min);
-      if(o.min!=null&&o.max!=null) longitudes.push(o.max-o.min);
+      if(o.min!=null&&o.max!=null) distancias.push(o.max-o.min);
+      if(o.min!=null) cadInicial = cadInicial==null?o.min:Math.min(cadInicial,o.min);
     });
-    if(finales.length) out[tramo]={
-      kmFinalProm: finales.reduce((a,b)=>a+b,0)/finales.length,
-      kmIniProm: iniciales.length?iniciales.reduce((a,b)=>a+b,0)/iniciales.length:null,
-      mlProm: longitudes.length?longitudes.reduce((a,b)=>a+b,0)/longitudes.length:null,
-      n: carriles.length
-    };
+    if(distancias.length){
+      const mlProm=distancias.reduce((a,b)=>a+b,0)/distancias.length;
+      out[tramo]={ cadInicial, mlProm, kmProm: cadInicial+mlProm, n: carriles.length };
+    }
   });
   return out;
 }
@@ -2028,7 +2030,6 @@ function _renderResumenRapido(){
   const carrilSel=(document.getElementById('resumenCarril')||{}).value||'__todos__';
   const desde=(document.getElementById('resumenDesde')||{}).value||null;
   const hasta=(document.getElementById('resumenHasta')||{}).value||null;
-  const esTotalObra=!desde&&!hasta; // sin filtro de fecha = viendo el total de la obra completa
   const recs=(recordsAll||[]).filter(r=>
     (obraSel==='__todas__'||r.obra===obraSel) &&
     (!desde||(r.fecha&&r.fecha>=desde)) &&
@@ -2037,51 +2038,62 @@ function _renderResumenRapido(){
   const tot=_resumenTotalesConcepto(recs, conceptoSel, carrilSel);
   const rango=_resumenCadCarriles(recs, conceptoSel, carrilSel);
   const tramos=Object.keys(rango);
+
+  // Cuando se filtra por UNA obra específica, solo se muestra el/los tramo(s) de esa obra —
+  // ya vienen aislados porque "recs" ya está filtrado por obraSel antes de llegar aquí.
   const rangoHtml = tramos.length ? tramos.map(t=>{
     const o=rango[t];
-    return `<div style="padding:6px 0;border-bottom:1px solid var(--bord)">
-      <div style="color:var(--muted);font-weight:700;margin-bottom:2px">${t}</div>
-      ${esTotalObra&&o.kmIniProm!=null?`<div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Km inicial promedio</span><span style="font-weight:700">${fmtCad(o.kmIniProm)}</span></div>`:''}
-      <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Km final promedio</span><span style="font-weight:700">${fmtCad(o.kmFinalProm)}</span></div>
-      <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">ML promedio de carriles</span><span style="font-weight:700">${o.mlProm!=null?_fmtMlOKm(o.mlProm):'—'}</span></div>
+    return `<div style="padding:8px 0;border-bottom:1px solid var(--bord)">
+      <div style="color:var(--muted);font-weight:700;margin-bottom:4px">${t}</div>
+      <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">Kilometraje promedio</span><span style="font-weight:700">${fmtCad(o.kmProm)}</span></div>
+      <div style="font-size:9.5px;color:var(--muted);margin-bottom:4px">= cadenamiento inicial (${fmtCad(o.cadInicial)}) + ML promedio de carriles</div>
+      <div style="display:flex;justify-content:space-between"><span style="color:var(--muted)">ML promedio de carriles</span><span style="font-weight:700">${_fmtMlOKm(o.mlProm)}</span></div>
+      <div style="font-size:9.5px;color:var(--muted)">= promedio de (ka−kde) de cada uno de los ${o.n} carril(es), por separado</div>
     </div>`;
   }).join('') : '<div style="color:var(--muted);font-size:12px">Sin cadenamiento capturado en los viajes filtrados.</div>';
-  // Cuando se ven "Todas las obras", el combinado de arriba mezcla ambas — aquí se desglosa
-  // por obra para que quede claro qué tanto pesa cada una en ese promedio/total combinado.
-  let desgloseHtml='';
-  if(obraSel==='__todas__'){
-    const claves=[...new Set(recs.map(r=>r.obra).filter(Boolean))].sort();
-    if(claves.length>1){
-      const filas=claves.map(k=>{
-        const c=_resumenTotalesConcepto(recs.filter(r=>r.obra===k), conceptoSel, carrilSel);
-        const nombre=(OBRAS[k]&&OBRAS[k].nombre)||k;
-        return `<tr style="border-bottom:1px solid var(--bord)"><td style="padding:5px 6px">${nombre}</td><td style="padding:5px 6px;text-align:right">${c.m2.toLocaleString('es-MX',{maximumFractionDigits:1})}</td><td style="padding:5px 6px;text-align:right">${c.ton.toLocaleString('es-MX',{maximumFractionDigits:1})}</td><td style="padding:5px 6px;text-align:right">${c.espCm.toFixed(2)} cm</td></tr>`;
-      }).join('');
-      desgloseHtml = `
-        <div style="font-weight:800;color:var(--gold);font-size:12px;margin-top:14px;margin-bottom:6px">Desglose por obra (el combinado de arriba es la suma/promedio ponderado de esto)</div>
-        <table style="width:100%;font-size:11.5px;border-collapse:collapse">
-          <tr style="color:var(--muted);text-align:left"><td style="padding:4px 6px">Obra</td><td style="padding:4px 6px;text-align:right">m²</td><td style="padding:4px 6px;text-align:right">Ton</td><td style="padding:4px 6px;text-align:right">Esp. real</td></tr>
-          ${filas}
-        </table>`;
-    }
-  }
+
   const conceptoOpt=(document.getElementById('resumenConcepto')||{}).selectedOptions;
   const conceptoTxt = conceptoSel==='__todos__' ? '' : ' · concepto '+(conceptoOpt&&conceptoOpt[0]?conceptoOpt[0].textContent:conceptoSel);
   const carrilTxt = carrilSel==='__todos__' ? '' : ' · carril '+carrilSel;
+  const fechaTxt = (desde||hasta)?('fechas '+(desde||'…')+' a '+(hasta||'…')):'todas las fechas';
+  const obraTxt = obraSel==='__todas__' ? 'todas las obras' : ((OBRAS[obraSel]&&OBRAS[obraSel].nombre)||obraSel);
+
   document.getElementById('resumenBody').innerHTML = `
-    <div style="font-weight:800;color:var(--gold);font-size:12.5px;margin-bottom:4px">Kilometraje por carril</div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <div style="font-weight:800;color:var(--gold);font-size:12.5px">Kilometraje por tramo</div>
+      <button onclick="_renderResumenRapido()" style="background:var(--blue4);border:1px solid var(--blue);border-radius:6px;color:var(--blue);padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer">🔄 Recalcular</button>
+    </div>
     ${rangoHtml}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px">
-      <div style="background:var(--bg);border:1px solid var(--bord);border-radius:8px;padding:10px"><div style="font-size:10px;color:var(--muted)">m² ejecutados</div><div style="font-size:16px;font-weight:800">${tot.m2.toLocaleString('es-MX',{maximumFractionDigits:1})}</div></div>
-      <div style="background:var(--bg);border:1px solid var(--bord);border-radius:8px;padding:10px"><div style="font-size:10px;color:var(--muted)">m³ geométricos</div><div style="font-size:16px;font-weight:800">${tot.m3.toLocaleString('es-MX',{maximumFractionDigits:1})}</div></div>
-      <div style="background:var(--bg);border:1px solid var(--bord);border-radius:8px;padding:10px"><div style="font-size:10px;color:var(--muted)">Ton reales totales</div><div style="font-size:16px;font-weight:800">${tot.ton.toLocaleString('es-MX',{maximumFractionDigits:1})}</div></div>
-      <div style="background:var(--bg);border:1px solid var(--bord);border-radius:8px;padding:10px"><div style="font-size:10px;color:var(--muted)">Espesor real promedio</div><div style="font-size:16px;font-weight:800">${tot.espCm.toFixed(2)} cm</div></div>
+    <div style="background:var(--bg);border:1px solid var(--bord);border-radius:8px;padding:10px;margin-top:10px">
+      <div style="font-size:10px;color:var(--muted)">Número de viajes</div>
+      <div style="font-size:16px;font-weight:800">${tot.n.toLocaleString('es-MX')}</div>
+      <div style="font-size:9.5px;color:var(--muted)">= viajes con al menos un concepto que cae dentro de este filtro</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+      <div style="background:var(--bg);border:1px solid var(--bord);border-radius:8px;padding:10px">
+        <div style="font-size:10px;color:var(--muted)">m² ejecutados</div>
+        <div style="font-size:16px;font-weight:800">${tot.m2.toLocaleString('es-MX',{maximumFractionDigits:1})}</div>
+        <div style="font-size:9px;color:var(--muted)">= suma de área por concepto</div>
+      </div>
+      <div style="background:var(--bg);border:1px solid var(--bord);border-radius:8px;padding:10px">
+        <div style="font-size:10px;color:var(--muted)">m³ geométricos</div>
+        <div style="font-size:16px;font-weight:800">${tot.m3.toLocaleString('es-MX',{maximumFractionDigits:1})}</div>
+        <div style="font-size:9px;color:var(--muted)">= suma de volumen por concepto</div>
+      </div>
+      <div style="background:var(--bg);border:1px solid var(--bord);border-radius:8px;padding:10px">
+        <div style="font-size:10px;color:var(--muted)">Ton reales totales</div>
+        <div style="font-size:16px;font-weight:800">${tot.ton.toLocaleString('es-MX',{maximumFractionDigits:1})}</div>
+        <div style="font-size:9px;color:var(--muted)">= suma de ton por concepto (báscula o calculado)</div>
+      </div>
+      <div style="background:var(--bg);border:1px solid var(--bord);border-radius:8px;padding:10px">
+        <div style="font-size:10px;color:var(--muted)">Espesor real promedio</div>
+        <div style="font-size:16px;font-weight:800">${tot.espCm.toFixed(2)} cm</div>
+        <div style="font-size:9px;color:var(--muted)">= ton ÷ (m² × ${DEN} ton/m³)</div>
+      </div>
     </div>
     <div style="font-size:10.5px;color:var(--muted);margin-top:10px;background:var(--bg);border:1px solid var(--bord);border-radius:6px;padding:6px 8px">
-      <b>Filtro activo:</b> ${tot.n} viaje${tot.n===1?'':'s'} incluido${tot.n===1?'':'s'} · ${(desde||hasta)?('fechas '+(desde||'…')+' a '+(hasta||'…')):'todas las fechas (total de obra)'}${conceptoTxt}${carrilTxt}
+      <b>Filtro activo:</b> ${obraTxt} · ${fechaTxt}${conceptoTxt}${carrilTxt}
     </div>
-    <div style="font-size:10px;color:var(--muted);margin-top:6px">Espesor real = toneladas ÷ (m² × ${DEN} ton/m³)</div>
-    ${desgloseHtml}
   `;
 }
 // entre carriles como _cadPromedioCarriles) — la meta de cada carril es el largo total del tramo
