@@ -78,6 +78,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 .tab{flex-shrink:0;padding:8px 12px;text-align:center;font-family:var(--sans);font-weight:700;font-size:11px;letter-spacing:.04em;color:var(--muted);cursor:pointer;white-space:nowrap;background:var(--surf);border:1px solid var(--bord);border-bottom:1px solid var(--bord);border-radius:8px 8px 0 0;margin-bottom:-1px;position:relative;transition:all .15s}
 .tab.active{color:var(--gold);background:var(--bg);border-color:var(--bord);border-bottom-color:var(--bg);z-index:2}
 .tab.locked{opacity:.35;pointer-events:none}
+#view-tiro.active{display:flex;flex-direction:column}
 /* VIEWS */
 .view{flex:1;overflow-y:auto;padding:12px;display:none;-webkit-overflow-scrolling:touch}
 .view.active{display:block}
@@ -236,9 +237,6 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 .tiro-mod{padding:5px 10px;background:var(--gold);border:none;border-radius:6px;color:#000;font-weight:700;font-size:11px;cursor:pointer;white-space:nowrap}
 .tiro-mod:disabled{background:var(--surf);color:var(--muted);border:1px solid var(--bord);cursor:not-allowed}
 /* modo ampliar (pantalla completa + celdas más grandes) */
-.sh.tiro-full{max-height:100dvh!important;height:100dvh}
-.sh.tiro-full .tiro-tbl{font-size:12.5px}
-.sh.tiro-full .tiro-tbl th,.sh.tiro-full .tiro-tbl td{padding:9px 11px}
 .bdl{grid-column:1/-1;padding:10px;background:none;border:1px solid var(--red);color:var(--red);border-radius:8px;font-family:var(--sans);font-size:14px;font-weight:700;cursor:pointer}
 /* TOAST */
 .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--green);color:#000;padding:10px 20px;border-radius:99px;font-family:var(--sans);font-size:14px;font-weight:800;letter-spacing:.04em;z-index:300;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
@@ -572,9 +570,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
   <div class="tabs" id="tabBar">
     <div class="tab active" onclick="switchTab('captura',this)">📋 CAPTURA</div>
     <div class="tab" onclick="switchTab('maquinaria',this)" id="tabMaquinaria" style="display:none">🚜 MAQUINARIA</div>
-    <div class="tab" onclick="abrirTiro()" title="Tabla de tiro">📋 TIRO</div>
     <div class="tab" onclick="switchTab('viajes',this)">📄 VIAJES</div>
     <div class="tab locked" id="tab-reporte" onclick="switchTab('reporte',this)">📊 REPORTE</div>
+    <div class="tab" id="tab-tiro" onclick="switchTab('tiro',this)">📋 TIRO</div>
   </div>
 
   <!-- CAPTURA -->
@@ -1017,42 +1015,13 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
     </div>
   </div>
 </div>
-
-
-<!-- LIGHTBOX -->
-<div class="lightbox" id="lightbox" onclick="closeLightbox()">
-  <button class="lb-close">✕</button>
-  <img id="lbImg" src="" alt="">
-</div>
-
-<!-- EDIT OVERLAY -->
-<div class="ov" id="editOv">
-  <div class="sh">
-    <h4>✏️ Editar viaje</h4>
-    <div id="editFlds"></div>
-    <div style="margin-top:10px">
-      <div class="field"><label>Observaciones</label><textarea id="e_obs" rows="3"></textarea></div>
-      <button class="voice-btn" id="voiceBtnEdit" onclick="toggleVoice('e_obs','voiceBtnEdit')"><span class="vi">🎙️</span> DICTAR</button>
-    </div>
-    <div class="sa">
-      <button class="bc" onclick="closeEdit()">Cancelar</button>
-      <button class="bsv" onclick="saveEdit()">Guardar</button>
-      <button class="bdl" id="btnDelRec" onclick="delRec()">🗑 Eliminar viaje</button>
+<div class="view" id="view-tiro">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <h4 style="margin:0">📋 Tabla de tiro</h4>
+    <div style="display:flex;gap:6px">
+      <button class="bc" id="btnGrafTiro" style="padding:6px 12px;font-size:13px" onclick="toggleGraficoTiro()">📉 Ocultar gráfico</button>
     </div>
   </div>
-</div>
-
-<!-- TABLA DE TIRO (desglose por concepto · ventana) -->
-<div class="ov" id="tiroOv" style="z-index:95;align-items:stretch">
-  <div class="sh" id="tiroSheet" style="max-height:96dvh;border-radius:0;display:flex;flex-direction:column">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <h4 style="margin:0">📋 Tabla de tiro</h4>
-      <div style="display:flex;gap:6px">
-        <button class="bc" id="btnGrafTiro" style="padding:6px 12px;font-size:13px" onclick="toggleGraficoTiro()">📉 Ocultar gráfico</button>
-        <button class="bc" id="btnAmpliarTiro" style="padding:6px 12px;font-size:13px" onclick="toggleAmpliarTiro()">⛶ Ampliar</button>
-        <button class="bc" style="padding:6px 12px;font-size:13px" onclick="cerrarTiro()">✕ Cerrar</button>
-      </div>
-    </div>
     <div id="tiroFiltro" style="font-size:11px;color:var(--muted);margin-bottom:8px"></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
       <button class="bc" style="padding:6px 12px;font-size:12px;font-weight:700;border-color:var(--gold);color:var(--gold)" onclick="exportarTablaExcel()">📊 Exportar tabla (Excel)</button>
@@ -1079,7 +1048,33 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
     </div>
     <div id="tiroWrap" style="overflow:auto;-webkit-overflow-scrolling:touch;flex:1;min-height:0"></div>
   </div>
+
+
+
+<!-- LIGHTBOX -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <button class="lb-close">✕</button>
+  <img id="lbImg" src="" alt="">
 </div>
+
+<!-- EDIT OVERLAY -->
+<div class="ov" id="editOv">
+  <div class="sh">
+    <h4>✏️ Editar viaje</h4>
+    <div id="editFlds"></div>
+    <div style="margin-top:10px">
+      <div class="field"><label>Observaciones</label><textarea id="e_obs" rows="3"></textarea></div>
+      <button class="voice-btn" id="voiceBtnEdit" onclick="toggleVoice('e_obs','voiceBtnEdit')"><span class="vi">🎙️</span> DICTAR</button>
+    </div>
+    <div class="sa">
+      <button class="bc" onclick="closeEdit()">Cancelar</button>
+      <button class="bsv" onclick="saveEdit()">Guardar</button>
+      <button class="bdl" id="btnDelRec" onclick="delRec()">🗑 Eliminar viaje</button>
+    </div>
+  </div>
+</div>
+
+<!-- TABLA DE TIRO (desglose por concepto · pestaña) -->
 
 <div class="toast" id="toast"></div>
 
@@ -3939,7 +3934,7 @@ function renderTablaTiro(){
       <td></td>
     </tr></tfoot></table>`;
 }
-window.abrirTiro=function(){ renderTablaTiro(); const o=document.getElementById('tiroOv'); if(o) o.classList.add('open'); };
+window.abrirTiro=function(){ switchTab('tiro', document.getElementById('tab-tiro')); };
 // Divisor arrastrable: ajusta el alto del gráfico para ver más/menos tabla
 let _tiroDrag=null;
 window.tiroDragStart=function(e){
@@ -4280,8 +4275,8 @@ function _rebuildExtras(){
     if(obraDoc!==obraActiva) return; // cada obra ve SOLO su propio volumen extra, nunca el de otra
     (x.bloques||[]).forEach(b=>_extras.push({...b,obra:obraDoc,extra:true}));
   });
-  const ov=document.getElementById('tiroOv');
-  if(typeof renderTablaTiro==='function' && ov && ov.style.display!=='none') renderTablaTiro();
+  const tv=document.getElementById('view-tiro');
+  if(typeof renderTablaTiro==='function' && tv && tv.classList.contains('active')) renderTablaTiro();
 }
 
 // ═══════════════════════════ MAQUINARIA ═══════════════════════════
@@ -5504,13 +5499,6 @@ window.aplicarCadPend=async function(){
   if(p) p.innerHTML=`<div style="color:var(--green);font-weight:700">✓ ${ok} viaje(s) actualizado(s)${fail?` · <span style="color:var(--red)">${fail} con error</span>`:''}</div><button class="bc" style="margin-top:8px;padding:5px 10px" onclick="document.getElementById('tiroCadPanel').style.display='none'">Cerrar</button>`;
   toast(`${ok} viaje(s) actualizado(s)`,fail?'err':'ok');
 };
-window.cerrarTiro=function(){ const o=document.getElementById('tiroOv'); if(o) o.classList.remove('open'); };
-window.toggleAmpliarTiro=function(){
-  const sh=document.getElementById('tiroSheet'), b=document.getElementById('btnAmpliarTiro');
-  if(!sh) return;
-  const full=sh.classList.toggle('tiro-full');
-  if(b) b.textContent = full?'⛶ Reducir':'⛶ Ampliar';
-};
 window.modificarDesdeTiro=function(id){ openEdit(id); }; // abre el editor encima; al guardar, la tabla se refresca sola
 
 // ═══ EDIT ═══
@@ -6303,8 +6291,6 @@ function renderAll() {
   actualizarPlacasList();
   actualizarStatusEmul();
   prellenarKde();
-  // Si la tabla de tiro está abierta, refrescar al llegar/cambiar datos
-  const _tov=document.getElementById('tiroOv'); if(_tov&&_tov.classList.contains('open')) renderTablaTiro();
   if(conceptosViaje.length===0) initConceptosViaje();
   else renderConceptosContainer();
   // Actualizar consecutivos cuando llegan nuevos datos de Firebase
@@ -6316,6 +6302,7 @@ function renderAll() {
   else if (id==='rep-camiones') renderRepCamiones();
   else if (id==='rep-volumen') renderRepVolumen();
   else if (id==='reporte') renderReporte();
+  else if (id==='tiro') renderTablaTiro();
   // Nota: antes había un "else renderList()" aquí que reconstruía TODA la lista de viajes
   // (con fotos incluidas) en cada actualización de Firebase, aunque estuvieras en CAPTURA.
   // Eso es lo que iba cargando de memoria/procesador la app según pasaban los días. Ya no corre
@@ -7281,6 +7268,7 @@ window.switchTab=function(id,el) {
   else if (id==='rep-camiones') renderRepCamiones();
   else if (id==='rep-volumen') renderRepVolumen();
   else if (id==='reporte') renderReporte();
+  else if (id==='tiro') renderTablaTiro();
 };
 
 // ═══ UTILS ═══
