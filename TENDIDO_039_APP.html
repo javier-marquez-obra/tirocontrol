@@ -78,7 +78,6 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 .tab{flex-shrink:0;padding:8px 12px;text-align:center;font-family:var(--sans);font-weight:700;font-size:11px;letter-spacing:.04em;color:var(--muted);cursor:pointer;white-space:nowrap;background:var(--surf);border:1px solid var(--bord);border-bottom:1px solid var(--bord);border-radius:8px 8px 0 0;margin-bottom:-1px;position:relative;transition:all .15s}
 .tab.active{color:var(--gold);background:var(--bg);border-color:var(--bord);border-bottom-color:var(--bg);z-index:2}
 .tab.locked{opacity:.35;pointer-events:none}
-#view-tiro.active{display:flex;flex-direction:column}
 /* VIEWS */
 .view{flex:1;overflow-y:auto;padding:12px;display:none;-webkit-overflow-scrolling:touch}
 .view.active{display:block}
@@ -568,11 +567,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
   </div>
 
   <div class="tabs" id="tabBar">
-    <div class="tab active" onclick="switchTab('captura',this)">📋 CAPTURA</div>
+    <div class="tab active" id="tab-captura" onclick="switchTab('captura',this)">📋 CAPTURA</div>
     <div class="tab" onclick="switchTab('maquinaria',this)" id="tabMaquinaria" style="display:none">🚜 MAQUINARIA</div>
-    <div class="tab" onclick="switchTab('viajes',this)">📄 VIAJES</div>
+    <div class="tab" id="tab-viajes" onclick="switchTab('viajes',this)">📄 VIAJES</div>
     <div class="tab locked" id="tab-reporte" onclick="switchTab('reporte',this)">📊 REPORTE</div>
-    <div class="tab" id="tab-tiro" onclick="switchTab('tiro',this)">📋 TIRO</div>
   </div>
 
   <!-- CAPTURA -->
@@ -797,10 +795,49 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 
   <!-- VIAJES -->
   <div class="view" id="view-viajes">
-    <div id="viajesToolbar" style="display:none;margin-bottom:8px">
-      <button class="be" onclick="abrirAuditoriaFolios()" style="padding:6px 12px;font-size:12px;border-color:#a78bfa;color:#a78bfa">🔍 Auditar folios duplicados (vale/remisión)</button>
+    <div style="display:flex;gap:6px;margin-bottom:10px">
+      <button id="viajesSubBtnLista" onclick="viajesSubTab('lista')" style="flex:1;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid var(--gold);background:var(--gold);color:#1a1a1a">📄 Lista</button>
+      <button id="viajesSubBtnTiro" onclick="viajesSubTab('tiro')" style="flex:1;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid var(--bord);background:var(--bg);color:var(--txt)">📋 Tabla de tiro</button>
     </div>
-    <div id="listViajes"></div>
+    <div id="viajesSubLista">
+      <div id="viajesToolbar" style="display:none;margin-bottom:8px">
+        <button class="be" onclick="abrirAuditoriaFolios()" style="padding:6px 12px;font-size:12px;border-color:#a78bfa;color:#a78bfa">🔍 Auditar folios duplicados (vale/remisión)</button>
+      </div>
+      <div id="listViajes"></div>
+    </div>
+    <div id="viajesSubTiro" style="display:none;flex-direction:column">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <h4 style="margin:0">📋 Tabla de tiro</h4>
+    <div style="display:flex;gap:6px">
+      <button class="bc" id="btnGrafTiro" style="padding:6px 12px;font-size:13px" onclick="toggleGraficoTiro()">📉 Ocultar gráfico</button>
+    </div>
+  </div>
+    <div id="tiroFiltro" style="font-size:11px;color:var(--muted);margin-bottom:8px"></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
+      <button class="bc" style="padding:6px 12px;font-size:12px;font-weight:700;border-color:var(--gold);color:var(--gold)" onclick="exportarTablaExcel()">📊 Exportar tabla (Excel)</button>
+      <button class="bc" style="padding:6px 12px;font-size:12px;font-weight:700;border-color:var(--blue);color:var(--blue)" onclick="document.getElementById('cadExcelFile').click()">⬆️ Subir Excel (actualizar datos)</button>
+      <input type="file" id="cadExcelFile" accept=".xlsx,.xls" style="display:none" onchange="leerCadExcel(this.files[0]);this.value=''">
+      <button class="bc" style="padding:6px 12px;font-size:12px" onclick="revisarTraslapes()">🔎 Revisar traslapes</button>
+      <button class="bc" style="padding:6px 12px;font-size:12px;font-weight:700;border-color:#a78bfa;color:#a78bfa" onclick="document.getElementById('genExtraFile').click()" title="Subir generador de bacheo o renivelación (volumen extra geométrico, solo cobro)">➕ Importar generador (extra)</button>
+      <input type="file" id="genExtraFile" accept=".xlsx,.xls" style="display:none" onchange="leerGeneradorExtra(this.files[0]);this.value=''">
+      <button class="bc" style="padding:6px 12px;font-size:12px;border-color:#ef4444;color:#ef4444" onclick="quitarGeneradorExtra()" title="Quitar volúmenes extra importados (bacheo/reniv)">🗑 Quitar extra</button>
+    </div>
+    <div id="tiroCadPanel" style="display:none;margin-bottom:8px;border:1px solid var(--bord);border-radius:8px;padding:10px;background:var(--bg);max-height:40vh;overflow:auto"></div>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <button id="tiroVistaSup" onclick="tiroVista('sup')" style="flex:1;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid var(--bord)">📊 Vista avance</button>
+      <button id="tiroVistaCli" onclick="tiroVista('cli')" style="flex:1;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid var(--bord)">🏗️ Vista cliente</button>
+    </div>
+    <div id="tiroGraficoBox" style="height:420px;overflow:auto;-webkit-overflow-scrolling:touch;flex:none">
+      <div id="tiroGraficoSup"></div>
+      <div id="tiroGraficoCli" style="display:none;margin-top:14px"></div>
+    </div>
+    <div id="tiroDrag" onmousedown="tiroDragStart(event)" ontouchstart="tiroDragStart(event)"
+      title="Arrastra para ajustar el tamaño del gráfico"
+      style="height:16px;flex:none;cursor:row-resize;display:flex;align-items:center;justify-content:center;background:var(--bg);border-top:1px solid var(--bord);border-bottom:1px solid var(--bord);margin:4px 0;border-radius:6px;touch-action:none;user-select:none">
+      <span style="color:var(--muted);font-size:13px;letter-spacing:3px;font-weight:900">⸺⸺</span>
+    </div>
+    <div id="tiroWrap" style="overflow:auto;-webkit-overflow-scrolling:touch;flex:1;min-height:0"></div>
+  </div>
   </div>
 
   <div id="foliosAuditOv" class="ov" style="z-index:140">
@@ -1012,42 +1049,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
         <span style="font-weight:800">🔧 Normalizar</span><br>
         <span style="font-size:11px;color:var(--muted);font-weight:400">Corregir viajes viejos cuyo concepto no coincide con el catálogo actual</span>
       </button>
+      <button class="be" onclick="cerrarAjustes()" style="text-align:center;padding:12px;margin-top:8px;background:var(--gold);border-color:var(--gold);color:#1a1a1a;font-weight:800">💾 Guardar y cerrar pestaña</button>
     </div>
   </div>
 </div>
-<div class="view" id="view-tiro">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-    <h4 style="margin:0">📋 Tabla de tiro</h4>
-    <div style="display:flex;gap:6px">
-      <button class="bc" id="btnGrafTiro" style="padding:6px 12px;font-size:13px" onclick="toggleGraficoTiro()">📉 Ocultar gráfico</button>
-    </div>
-  </div>
-    <div id="tiroFiltro" style="font-size:11px;color:var(--muted);margin-bottom:8px"></div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px">
-      <button class="bc" style="padding:6px 12px;font-size:12px;font-weight:700;border-color:var(--gold);color:var(--gold)" onclick="exportarTablaExcel()">📊 Exportar tabla (Excel)</button>
-      <button class="bc" style="padding:6px 12px;font-size:12px;font-weight:700;border-color:var(--blue);color:var(--blue)" onclick="document.getElementById('cadExcelFile').click()">⬆️ Subir Excel (actualizar datos)</button>
-      <input type="file" id="cadExcelFile" accept=".xlsx,.xls" style="display:none" onchange="leerCadExcel(this.files[0]);this.value=''">
-      <button class="bc" style="padding:6px 12px;font-size:12px" onclick="revisarTraslapes()">🔎 Revisar traslapes</button>
-      <button class="bc" style="padding:6px 12px;font-size:12px;font-weight:700;border-color:#a78bfa;color:#a78bfa" onclick="document.getElementById('genExtraFile').click()" title="Subir generador de bacheo o renivelación (volumen extra geométrico, solo cobro)">➕ Importar generador (extra)</button>
-      <input type="file" id="genExtraFile" accept=".xlsx,.xls" style="display:none" onchange="leerGeneradorExtra(this.files[0]);this.value=''">
-      <button class="bc" style="padding:6px 12px;font-size:12px;border-color:#ef4444;color:#ef4444" onclick="quitarGeneradorExtra()" title="Quitar volúmenes extra importados (bacheo/reniv)">🗑 Quitar extra</button>
-    </div>
-    <div id="tiroCadPanel" style="display:none;margin-bottom:8px;border:1px solid var(--bord);border-radius:8px;padding:10px;background:var(--bg);max-height:40vh;overflow:auto"></div>
-    <div style="display:flex;gap:6px;margin-bottom:8px">
-      <button id="tiroVistaSup" onclick="tiroVista('sup')" style="flex:1;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid var(--bord)">📊 Vista avance</button>
-      <button id="tiroVistaCli" onclick="tiroVista('cli')" style="flex:1;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid var(--bord)">🏗️ Vista cliente</button>
-    </div>
-    <div id="tiroGraficoBox" style="height:420px;overflow:auto;-webkit-overflow-scrolling:touch;flex:none">
-      <div id="tiroGraficoSup"></div>
-      <div id="tiroGraficoCli" style="display:none;margin-top:14px"></div>
-    </div>
-    <div id="tiroDrag" onmousedown="tiroDragStart(event)" ontouchstart="tiroDragStart(event)"
-      title="Arrastra para ajustar el tamaño del gráfico"
-      style="height:16px;flex:none;cursor:row-resize;display:flex;align-items:center;justify-content:center;background:var(--bg);border-top:1px solid var(--bord);border-bottom:1px solid var(--bord);margin:4px 0;border-radius:6px;touch-action:none;user-select:none">
-      <span style="color:var(--muted);font-size:13px;letter-spacing:3px;font-weight:900">⸺⸺</span>
-    </div>
-    <div id="tiroWrap" style="overflow:auto;-webkit-overflow-scrolling:touch;flex:1;min-height:0"></div>
-  </div>
+
 
 
 
@@ -2061,6 +2067,7 @@ try {
 const COL   = 'viajes';
 
 let records  = [];
+let _viajesSub='lista'; // sub-pestaña activa dentro de VIAJES: 'lista' o 'tiro'
 let recordsAll = []; // todos los viajes crudos; records es solo la obra activa
 let session  = { nombre:'', rol:'operador' };
 let editId   = null;
@@ -3934,7 +3941,16 @@ function renderTablaTiro(){
       <td></td>
     </tr></tfoot></table>`;
 }
-window.abrirTiro=function(){ switchTab('tiro', document.getElementById('tab-tiro')); };
+window.abrirTiro=function(){
+  switchTab('viajes', document.getElementById('tab-viajes'));
+  viajesSubTab('tiro');
+};
+// Ajustes no tiene su propio estado que guardar (cada modal — Carriles, Camiones, Catálogo,
+// Normalizar — ya guarda con su propio botón) — este botón solo regresa a Captura.
+window.cerrarAjustes=function(){
+  switchTab('captura', document.getElementById('tab-captura'));
+  toast('Ajustes guardados','ok');
+};
 // Divisor arrastrable: ajusta el alto del gráfico para ver más/menos tabla
 let _tiroDrag=null;
 window.tiroDragStart=function(e){
@@ -4275,8 +4291,7 @@ function _rebuildExtras(){
     if(obraDoc!==obraActiva) return; // cada obra ve SOLO su propio volumen extra, nunca el de otra
     (x.bloques||[]).forEach(b=>_extras.push({...b,obra:obraDoc,extra:true}));
   });
-  const tv=document.getElementById('view-tiro');
-  if(typeof renderTablaTiro==='function' && tv && tv.classList.contains('active')) renderTablaTiro();
+  if(typeof renderTablaTiro==='function' && _viajesSub==='tiro') renderTablaTiro();
 }
 
 // ═══════════════════════════ MAQUINARIA ═══════════════════════════
@@ -6298,7 +6313,7 @@ function renderAll() {
   const activeView = document.querySelector('.view.active');
   if (!activeView) return;
   const id = activeView.id.replace('view-','');
-  if (id==='viajes') renderList();
+  if (id==='viajes') { if(_viajesSub==='tiro') renderTablaTiro(); else renderList(); }
   else if (id==='rep-camiones') renderRepCamiones();
   else if (id==='rep-volumen') renderRepVolumen();
   else if (id==='reporte') renderReporte();
@@ -7263,12 +7278,25 @@ window.switchTab=function(id,el) {
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('view-'+id).classList.add('active');
   el.classList.add('active');
-  if (id==='viajes') renderList();
+  if (id==='viajes') viajesSubTab('lista');
   else if (id==='maquinaria'){ renderMaqEquipoSelect(); const fe=document.getElementById('maq_fecha'); if(fe&&!fe.value) fe.value=fechaJornada(); _maqRenderConceptos(); _maqRenderIncidencias(); _maqRenderDiesel(); _maqCargarOAutorellenar(); renderMaqReportesOp(); switchMaqSub('resumen'); }
   else if (id==='rep-camiones') renderRepCamiones();
   else if (id==='rep-volumen') renderRepVolumen();
   else if (id==='reporte') renderReporte();
-  else if (id==='tiro') renderTablaTiro();
+};
+// Sub-pestañas dentro de VIAJES: Lista de viajes vs. Tabla de tiro (antes era una pestaña
+// aparte arriba; ahora vive adentro de Viajes, que es donde tiene más sentido consultarla).
+window.viajesSubTab=function(which){
+  _viajesSub=which;
+  const lista=document.getElementById('viajesSubLista'), tiro=document.getElementById('viajesSubTiro');
+  const bL=document.getElementById('viajesSubBtnLista'), bT=document.getElementById('viajesSubBtnTiro');
+  if(lista) lista.style.display = which==='lista'?'block':'none';
+  if(tiro) tiro.style.display = which==='tiro'?'flex':'none';
+  const on='border:1px solid var(--gold);background:var(--gold);color:#1a1a1a';
+  const off='border:1px solid var(--bord);background:var(--bg);color:var(--txt)';
+  if(bL) bL.style.cssText='flex:1;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;'+(which==='lista'?on:off);
+  if(bT) bT.style.cssText='flex:1;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;'+(which==='tiro'?on:off);
+  if(which==='lista') renderList(); else renderTablaTiro();
 };
 
 // ═══ UTILS ═══
