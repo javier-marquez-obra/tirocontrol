@@ -5962,7 +5962,7 @@ function renderConceptosContainer(){
     const mostrarTon=esRenivBacheo||multiConcepto; // en carpeta solo se pide si hay 2+ conceptos que repartir
     return `<div style="background:var(--surf);border:1px solid var(--bord);border-radius:10px;padding:12px" id="concepto_card_${i}">
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
-        <select onchange="conceptosViaje[${i}].id=this.value;conceptosViaje[${i}].num_consec=null;renderConceptosContainer();setTimeout(()=>actualizarConsecutivo(${i}),50)" 
+        <select onchange="conceptosViaje[${i}].id=this.value;conceptosViaje[${i}].carril=null;conceptosViaje[${i}].num_consec=null;renderConceptosContainer();setTimeout(()=>{actualizarConsecutivo(${i});if(${i}===0)prellenarKdePorConcepto(true);},50)" 
           style="flex:2;font-weight:700;color:var(--gold);background:var(--bg);border:1px solid var(--bord);border-radius:6px;padding:6px;font-size:12px">
           ${_conceptosDelTramoActivo().map(x=>`<option value="${x.id}" ${x.id===cv.id?'selected':''}>${x.label}</option>`).join('')}
         </select>
@@ -6200,7 +6200,10 @@ window.onConceptoChange=function(){
   const v=document.getElementById('f_concepto').value;
   const ow=document.getElementById('f_concepto_otro_wrap');
   if(ow) ow.style.display=v==='OTRO'?'':'none';
-  prellenarKdePorConcepto();
+  // Forzado: al cambiar de concepto, el cadenamiento del concepto ANTERIOR ya no aplica —
+  // siempre se refresca al último punto donde se quedó este concepto+carril, sin importar
+  // si el campo ya tenía algo escrito (antes solo se rellenaba si estaba vacío).
+  prellenarKdePorConcepto(true);
   actualizarHintTon();
 };
 function actualizarHintTon(){
@@ -6914,7 +6917,9 @@ function _repGraficos(){
   const valDia=dias.map(f=>+bd[f].toFixed(esM3?3:2));
   const maxDia=Math.max(...valDia,1);
   let ac=0; const acum=dias.map(f=>{ ac+=bd[f]; return +ac.toFixed(esM3?3:2); });
-  const totalVal=ac;
+  // totalVal se redondea AQUÍ (no después) — así "Colocado", "Faltan" y el % de la barra salen
+  // siempre de exactamente el mismo número, sin manera de que se desalineen entre sí.
+  const totalVal=+ac.toFixed(esM3?3:2);
   const cat=(typeof catalogoActivo!=='undefined'&&catalogoActivo.length)?catalogoActivo:CATALOGO_E7;
   const metaM3=cat.filter(c=>c.id!=='OTRO').reduce((s,c)=>s+(c.cantidad||0),0);
   const metaVal=+(esM3?metaM3:metaM3*DEN).toFixed(2);
