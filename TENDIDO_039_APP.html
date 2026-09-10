@@ -74,9 +74,9 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 .role-tag.op{background:rgba(96,165,250,.13);color:var(--blue);border:1px solid #1a2a40}
 .cnt-badge{background:var(--gold);color:#000;font-family:var(--mono);font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px}
 /* TABS */
-.tabs{display:flex;background:var(--surf);border-bottom:1px solid var(--bord);flex-shrink:0;overflow-x:auto}
-.tab{flex-shrink:0;padding:10px 10px;text-align:center;font-family:var(--sans);font-weight:700;font-size:11px;letter-spacing:.04em;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap}
-.tab.active{color:var(--gold);border-bottom-color:var(--gold)}
+.tabs{display:flex;background:var(--surf);border-bottom:1px solid var(--bord);flex-shrink:0;overflow-x:auto;gap:3px;padding:6px 6px 0}
+.tab{flex-shrink:0;padding:8px 12px;text-align:center;font-family:var(--sans);font-weight:700;font-size:11px;letter-spacing:.04em;color:var(--muted);cursor:pointer;white-space:nowrap;background:var(--surf);border:1px solid var(--bord);border-bottom:1px solid var(--bord);border-radius:8px 8px 0 0;margin-bottom:-1px;position:relative;transition:all .15s}
+.tab.active{color:var(--gold);background:var(--bg);border-color:var(--bord);border-bottom-color:var(--bg);z-index:2}
 .tab.locked{opacity:.35;pointer-events:none}
 /* VIEWS */
 .view{flex:1;overflow-y:auto;padding:12px;display:none;-webkit-overflow-scrolling:touch}
@@ -283,8 +283,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
       <div class="sync-dot loading" id="syncDot"></div>
       <div class="role-tag" id="roleTag">—</div>
       <div class="cnt-badge" id="cntBadge">0</div>
-      <button id="btnTiro" onclick="abrirTiro()" title="Tabla de tiro"
-        style="background:var(--surf);border:1px solid var(--bord);color:var(--gold);border-radius:8px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">📋 Tiro</button>
+      <button id="btnAjustes" onclick="switchTab('ajustes', this)" title="Carriles, Camiones, Catálogo y Normalizar"
+        style="background:var(--surf);border:1px solid var(--bord);color:var(--gold);border-radius:8px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">⚙️ Ajustes</button>
       <button id="btnForzarUpdate" onclick="forzarActualizacionApp()" title="Si la app se ve vieja o no jalan los cambios recientes, dale clic aquí"
         style="background:var(--surf);border:1px solid var(--bord);color:var(--blue);border-radius:8px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap">🔄 Actualizar</button>
       <button id="btnSalir" onclick="cerrarSesion()" title="Cerrar sesión"
@@ -571,10 +571,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 
   <div class="tabs" id="tabBar">
     <div class="tab active" onclick="switchTab('captura',this)">📋 CAPTURA</div>
-    <div class="tab" onclick="switchTab('viajes',this)">📄 VIAJES</div>
     <div class="tab" onclick="switchTab('maquinaria',this)" id="tabMaquinaria" style="display:none">🚜 MAQUINARIA</div>
+    <div class="tab" onclick="abrirTiro()" title="Tabla de tiro">📋 TIRO</div>
+    <div class="tab" onclick="switchTab('viajes',this)">📄 VIAJES</div>
     <div class="tab locked" id="tab-reporte" onclick="switchTab('reporte',this)">📊 REPORTE</div>
-    <div class="tab" onclick="switchTab('ajustes',this)">⚙️ AJUSTES</div>
   </div>
 
   <!-- CAPTURA -->
