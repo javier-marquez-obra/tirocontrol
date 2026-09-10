@@ -808,7 +808,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
     <h4 style="margin:0">📋 Tabla de tiro</h4>
     <div style="display:flex;gap:6px">
-      <button class="bc" id="btnGrafTiro" style="padding:6px 12px;font-size:13px" onclick="toggleGraficoTiro()">📉 Ocultar gráfico</button>
+      <button class="bc" id="btnGrafTiro" style="padding:6px 12px;font-size:13px" onclick="toggleGraficoTiro()">⬆️ Recoger gráfico</button>
     </div>
   </div>
     <div id="tiroFiltro" style="font-size:11px;color:var(--muted);margin-bottom:8px"></div>
@@ -826,7 +826,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
       <button id="tiroVistaSup" onclick="tiroVista('sup')" style="flex:1;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid var(--bord)">📊 Vista avance</button>
       <button id="tiroVistaCli" onclick="tiroVista('cli')" style="flex:1;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid var(--bord)">🏗️ Vista cliente</button>
     </div>
-    <div id="tiroGraficoBox" style="height:420px;overflow:auto;-webkit-overflow-scrolling:touch;flex:none">
+    <div id="tiroGraficoBox" style="height:420px;overflow:auto;-webkit-overflow-scrolling:touch;flex:none;transition:height .22s ease">
       <div id="tiroGraficoSup"></div>
       <div id="tiroGraficoCli" style="display:none;margin-top:14px"></div>
     </div>
@@ -3263,6 +3263,8 @@ const TIRO_COLS = [
 ];
 let _tiroColsOff = new Set(JSON.parse(localStorage.getItem('t039_tiro_cols_off')||'[]'));
 let _tiroColsPanelOpen = false; // mantiene el desplegable de columnas abierto entre re-renders
+let _tiroFiltroAbierto = true; // colapsa el filtro de días para darle más espacio a la tabla
+window.toggleTiroFiltro=function(){ _tiroFiltroAbierto=!_tiroFiltroAbierto; renderTablaTiro(); };
 let _tiroColsDraft = new Set(_tiroColsOff); // selección en curso mientras el panel está abierto (no se aplica hasta cerrar)
 // Marca/desmarca en el borrador SIN re-renderizar la tabla — así el checkbox no pierde el desplegable abierto.
 window.tiroToggleCol = function(k){
@@ -3596,8 +3598,8 @@ function _larguilloVista(segs,titulo,tramo,modo){
     rows+=`<text x="${PADL}" y="${y-9}" font-size="9.5" font-weight="700" fill="${t.color}">${t.label}</text>`;
     carp.forEach(s=>{ const x1=X(s.a), x2=X(s.b); const w=Math.max(2,x2-x1); const cx=(x1+x2)/2;
       rows+=`<rect x="${x1}" y="${y+3}" width="${w}" height="${trackH-6}" rx="2" fill="${t.color}" opacity="0.92" stroke="#0d1017" stroke-width="0.8"><title>Camión ${s.num}${s.placas?' · '+s.placas:''}: ${fmtCad(s.a)} → ${fmtCad(s.b)}</title></rect>`;
-      if(w>=11) rows+=`<text x="${cx}" y="${cy+3}" text-anchor="middle" font-size="7.5" font-weight="700" fill="#0d1017">${s.num}</text>`;
-      else rows+=`<text x="${cx}" y="${y-1}" text-anchor="middle" font-size="6.5" font-weight="800" fill="${t.color}">${s.num}</text>`;
+      const fs = w>=11 ? 7.5 : Math.max(4.5, w*0.62);
+      rows+=`<text x="${cx}" y="${cy+3}" text-anchor="middle" font-size="${fs.toFixed(1)}" font-weight="700" fill="#0d1017">${s.num}</text>`;
     });
     ren.forEach(s=>{ const x1=X(s.a), x2=X(s.b);
       rows+=`<rect x="${x1}" y="${y-renH-2}" width="${Math.max(2,x2-x1)}" height="${renH}" rx="2" fill="${RENIV_COL}"${s.extra?' stroke="#fff" stroke-width="0.7" stroke-dasharray="2 1.5"':''}><title>Renivelación${s.extra?' EXTRA (geométrico)':' · viaje '+s.num}: ${fmtCad(s.a)} → ${fmtCad(s.b)} · ${(s.volGeo||0).toFixed(2)} m³</title></rect>`;
@@ -3789,6 +3791,12 @@ function renderTablaTiro(){
   const fnote=document.getElementById('tiroFiltro');
   if(fnote){
     const chipBase='padding:5px 11px;border-radius:99px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid var(--bord);white-space:nowrap';
+    if(!_tiroFiltroAbierto){
+      fnote.innerHTML = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <button onclick="toggleTiroFiltro()" style="${chipBase};background:var(--bg);color:var(--txt)">▸ Días y columnas (${sel.size}/${fechas.length} días)</button>
+        <span style="color:var(--muted);font-size:11px">${rs.length} viaje(s) · una fila por concepto</span>
+      </div>`;
+    } else {
     const chips = fechas.map(f=>{
       const on=sel.has(f);
       return `<button onclick="toggleTiroDia('${f}')" style="${chipBase};background:${on?'var(--gold)':'var(--bg)'};color:${on?'#1a1a1a':'var(--txt)'};border-color:${on?'var(--gold)':'var(--bord)'}">${f.split('-').reverse().join('/').slice(0,5)}</button>`;
@@ -3805,9 +3813,11 @@ function renderTablaTiro(){
             <button type="button" onclick="tiroColsReset()" style="grid-column:1/-1;padding:4px 6px;font-size:11px;margin-top:4px">↺ Mostrar todas</button>
           </div>
         </details>
+        <button onclick="toggleTiroFiltro()" style="${chipBase};background:var(--bg);color:var(--muted)">▾ Ocultar filtro</button>
       </div>
       <span style="color:var(--muted);font-size:11px">${rs.length} viaje(s) · ${sel.size} día(s) · una fila por concepto · <i>toca para elegir varios</i></span>
     </div>`;
+    }
   }
   renderGraficoTiro(rs, todos);
   if(!rs.length){ wrap.innerHTML='<div style="padding:24px;text-align:center;color:var(--muted)">Sin viajes en los días elegidos</div>'; return; }
@@ -3970,7 +3980,7 @@ window.cerrarAjustes=function(){
 // Divisor arrastrable: ajusta el alto del gráfico para ver más/menos tabla
 let _tiroDrag=null;
 window.tiroDragStart=function(e){
-  const box=document.getElementById('tiroGraficoBox'); if(!box||box.style.display==='none') return;
+  const box=document.getElementById('tiroGraficoBox'); if(!box||box.style.height==='0px') return;
   _tiroDrag={y:(e.touches?e.touches[0].clientY:e.clientY), h:box.offsetHeight};
   document.body.style.userSelect='none';
   if(e.cancelable) e.preventDefault();
@@ -3989,14 +3999,25 @@ document.addEventListener('mousemove',_tiroDragMove);
 document.addEventListener('touchmove',_tiroDragMove,{passive:false});
 document.addEventListener('mouseup',_tiroDragEnd);
 document.addEventListener('touchend',_tiroDragEnd);
-// Ocultar/mostrar gráfico para dar toda la pantalla a la tabla
+// Recoge el gráfico hacia arriba (no lo oculta de golpe) para darle espacio a la tabla —
+// recuerda la altura que tenía para regresar ahí, en vez de siempre al default.
+let _tiroAlturaPrevia=null;
 window.toggleGraficoTiro=function(){
   const box=document.getElementById('tiroGraficoBox'), dr=document.getElementById('tiroDrag'), b=document.getElementById('btnGrafTiro');
   if(!box) return;
-  const oculto = box.style.display==='none';
-  box.style.display = oculto?'':'none';
-  if(dr) dr.style.display = oculto?'':'none';
-  if(b) b.textContent = oculto?'📉 Ocultar gráfico':'📈 Mostrar gráfico';
+  const recogido = box.style.height==='0px';
+  if(recogido){
+    box.style.height=(_tiroAlturaPrevia||420)+'px';
+    box.style.overflow='auto';
+    if(dr) dr.style.display='';
+    if(b) b.textContent='⬆️ Recoger gráfico';
+  } else {
+    _tiroAlturaPrevia=box.offsetHeight||420;
+    box.style.overflow='hidden';
+    box.style.height='0px';
+    if(dr) dr.style.display='none';
+    if(b) b.textContent='⬇️ Mostrar gráfico';
+  }
 };
 
 // ════════════ EXCEL DE CADENAMIENTOS (exportar · editar · re-subir · recalcular · traslapes) ════════════
