@@ -271,6 +271,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 </div>
 
 <div id="appShell">
+  <div id="fullHeader">
   <header>
     <div class="h-left">
       <div class="h-logo">TENDIDO 039</div>
@@ -573,6 +574,14 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
     <div class="tab locked" id="tab-reporte" onclick="switchTab('reporte',this)">📊 REPORTE</div>
     <div class="tab" id="tab-tiro" onclick="switchTab('tiro',this)">📋 TIRO</div>
   </div>
+  </div>
+  <div id="focusHeader" style="display:none;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;background:var(--surf);border-bottom:1px solid var(--bord)">
+    <div style="display:flex;flex-direction:column;gap:1px;min-width:0">
+      <span style="font-size:10px;color:var(--muted);font-weight:700" id="focusObraLbl">—</span>
+      <span style="font-size:14px;font-weight:800;color:var(--gold)" id="focusTabLbl">—</span>
+    </div>
+    <button onclick="regresarVistaCompleta()" style="flex:0 0 auto;background:var(--bg);border:1px solid var(--bord);color:var(--txt);border-radius:8px;padding:7px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">← Regresar</button>
+  </div>
 
   <!-- CAPTURA -->
   <div class="view active" id="view-captura">
@@ -628,6 +637,35 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
         <button type="button" class="be" id="btnResetTend" onclick="resetTendido()" style="font-size:11px;padding:6px 10px">↺</button>
       </div>
       <div id="tendInfo" style="font-family:var(--mono);font-size:13px;font-weight:700;margin-top:8px;color:var(--muted)">Toca ▶ cuando el camión empieza a descargar. Marca ⏹ Termina antes de guardar el viaje.</div>
+      <div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--bord)">
+        <div style="font-size:11px;font-weight:700;color:var(--gold);margin-bottom:6px">📅 Jornada completa del día de tendido (para el resumen del día)</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button type="button" class="be" onclick="marcarInicioJornadaTendido()" style="border-color:var(--green);color:var(--green);font-weight:700">▶ Inicio de jornada</button>
+          <button type="button" class="be" onclick="marcarFinJornadaTendido()" style="border-color:#ef4444;color:#ef4444;font-weight:700">⏹ Terminó el último camión</button>
+        </div>
+        <div id="jornadaTendInfo" style="font-family:var(--mono);font-size:12.5px;font-weight:700;margin-top:8px;color:var(--muted)">Marca ▶ una sola vez, al primer camión del día. Marca ⏹ solo cuando el ÚLTIMO camión del día termine — no en cada uno.</div>
+      </div>
+    </div>
+
+    <!-- CAMIÓN REGRESÓ CARGADO — no cuenta para toneladas colocadas; se contabiliza aparte para
+         pagar al transportista y para reclamos de mezcla que se generen. -->
+    <div class="fc" id="regresoCard" style="border:1px solid #7a2e2e">
+      <h3 onclick="toggleRegresoCard()" style="cursor:pointer;user-select:none">🔙 Camión regresó cargado <span style="font-size:10px;font-weight:400;color:var(--muted)">(toca para {abrir/cerrar})</span></h3>
+      <div id="regresoBody" style="display:none">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Para camiones que regresan sin descargar. Queda registrado como evidencia, pero <b>no se suma a las toneladas colocadas</b> — se lleva aparte, para pagarle al transportista y para reclamos de mezcla.</div>
+        <div class="fg">
+          <div class="field"><label>Placas</label><input type="text" id="f_reg_placas" placeholder="ABC1234" style="text-transform:uppercase"></div>
+          <div class="field"><label>Folio (vale/remisión)</label><input type="text" id="f_reg_folio" placeholder="V-0001"></div>
+          <div class="field"><label>Peso (ton)</label><input type="number" id="f_reg_ton" step="0.01" inputmode="decimal" placeholder="22.50"></div>
+          <div class="field ff"><label>Observación</label><input type="text" id="f_reg_obs" placeholder="Motivo del regreso"></div>
+        </div>
+        <button class="btn-save" style="margin-top:8px;background:rgba(220,38,38,.1);border:1px solid #7a2e2e;color:#ef4444;padding:10px" onclick="guardarCamionRegreso()">📥 GUARDAR REGRESO</button>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">
+          <span style="font-size:11px;font-weight:700;color:var(--gold)">Regresos de hoy</span>
+          <button class="be" style="padding:4px 10px;font-size:11px" onclick="exportarRegresosExcel()">📊 Exportar Excel</button>
+        </div>
+        <div id="regresoLista" style="margin-top:6px;font-size:12px"></div>
+      </div>
     </div>
 
     <!-- TRAMO DE CAPTURA — decide qué subtramo se está cargando, filtra el menú de conceptos.
@@ -857,8 +895,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
   <!-- MAQUINARIA -->
   <div class="view" id="view-maquinaria">
     <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
-      <button class="be" onclick="switchMaqSub('resumen')" id="btnMaqSubResumen" style="padding:9px 16px;font-size:14px;font-weight:700;border-color:var(--gold);color:var(--gold)">📋 Resumen</button>
-      <button class="be" onclick="switchMaqSub('bitacora')" id="btnMaqSubBitacora" style="padding:9px 16px;font-size:14px;font-weight:700">📝 Registrar día</button>
+      <button class="be" onclick="switchMaqSub('bitacora')" id="btnMaqSubBitacora" style="padding:9px 16px;font-size:14px;font-weight:700;border-color:var(--gold);color:var(--gold)">📝 Registrar día</button>
+      <button class="be" onclick="switchMaqSub('resumen')" id="btnMaqSubResumen" style="padding:9px 16px;font-size:14px;font-weight:700">📋 Resumen</button>
       <button class="be" onclick="switchMaqSub('historial')" id="btnMaqSubHistorial" style="padding:9px 16px;font-size:14px;font-weight:700">📚 Historial</button>
       <button class="be" onclick="toggleMaqMasMenu()" id="btnMaqMas" style="padding:9px 16px;font-size:14px;font-weight:700;position:relative">⋯ Más<span id="maqReportesOpBadgeMini" style="display:none;position:absolute;top:-6px;right:-6px;background:#dc2626;color:#fff;border-radius:99px;font-size:10px;font-weight:800;padding:1px 6px">0</span></button>
     </div>
@@ -927,6 +965,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
           </div>
         </div>
         <div style="font-size:12px;font-weight:700;color:var(--gold);margin-bottom:10px">Horas trabajadas: <span id="maqHorasCalc">—</span></div>
+        <div id="maqHorasWarn" style="display:none;margin:-6px 0 10px;font-size:11px;font-weight:700;color:#dc2626;background:rgba(220,38,38,.1);border:1px solid #dc2626;border-radius:6px;padding:6px 8px">⚠️ Más de 24 hrs entre horómetro inicial y final — revisa que no sea un error de captura.</div>
 
         <div style="margin-bottom:10px">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
@@ -1085,7 +1124,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, addDoc, setDoc, doc, getDoc, getDocFromServer, updateDoc, deleteDoc, onSnapshot, query, orderBy } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, addDoc, setDoc, doc, getDoc, getDocs, getDocFromServer, updateDoc, deleteDoc, onSnapshot, query, where, orderBy } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
 
 const firebaseConfig = {
@@ -2816,6 +2855,89 @@ function _updTendInfo(){
 window.marcarInicioTendido=function(){ _horaIni=_hhmmss(new Date()); _horaFin=null; _updTendInfo(); };
 window.marcarFinTendido=function(){ if(!_horaIni){ toast('Primero marca ▶ Inicia','warn'); return; } _horaFin=_hhmmss(new Date()); _updTendInfo(); };
 window.resetTendido=function(){ _horaIni=null; _horaFin=null; _updTendInfo(); };
+// Jornada completa de tendido: UN inicio y UN fin por DÍA (no por camión) — igual que la emulsión.
+// El fin se marca solo cuando el ÚLTIMO camión del día termina, dando la duración real de toda
+// la jornada de tendido, que es el dato que se necesita para el resumen del día.
+window.marcarInicioJornadaTendido=async function(){
+  const fecha=fechaJornada(), hora=_hhmmss(new Date());
+  try{
+    const snap=await getDoc(doc(db,'tendidoJornada039',fecha));
+    if(snap.exists() && snap.data().hora_inicio && !confirm('Ya hay un inicio guardado hoy ('+snap.data().hora_inicio+'). ¿Reemplazarlo por '+hora+'?')) return;
+    await setDoc(doc(db,'tendidoJornada039',fecha),{hora_inicio:hora,capturado_por:session.nombre,ts_inicio:Date.now()},{merge:true});
+    toast('▶ Inicio de jornada de tendido: '+hora,'ok');
+    document.getElementById('jornadaTendInfo').textContent='Inició '+hora+' · esperando al último camión del día…';
+  }catch(e){ toast('Error: '+e.message,'err'); }
+};
+window.marcarFinJornadaTendido=async function(){
+  const fecha=fechaJornada(), hora=_hhmmss(new Date());
+  try{
+    const snap=await getDoc(doc(db,'tendidoJornada039',fecha));
+    const ini=snap.exists()?snap.data().hora_inicio:null;
+    if(!ini){ if(!confirm('No hay hora de INICIO guardada hoy. ¿Guardar el fin de todos modos, sin poder calcular la duración?')) return; }
+    const dur=ini?_durMin(ini,hora):null;
+    await setDoc(doc(db,'tendidoJornada039',fecha),{hora_fin:hora,duracion_min:dur,capturado_por:session.nombre,ts_fin:Date.now()},{merge:true});
+    const info=document.getElementById('jornadaTendInfo');
+    if(info) info.textContent = ini ? `${ini} → ${hora}  ·  ${dur} min de jornada de tendido (día completo)` : `Fin ${hora} guardado (sin inicio para calcular duración)`;
+    toast('⏹ Fin de jornada guardado'+(dur!=null?' — '+dur+' min':''),'ok');
+  }catch(e){ toast('Error: '+e.message,'err'); }
+};
+// ── Camiones que regresan cargados: registro aparte, NUNCA se mezcla con viajes/toneladas
+// colocadas — sirve como evidencia para pagar al transportista y para reclamos de mezcla. ──
+window.toggleRegresoCard=function(){
+  const b=document.getElementById('regresoBody'); if(!b) return;
+  const abrir = b.style.display==='none';
+  b.style.display = abrir?'':'none';
+  if(abrir) _renderRegresosLista();
+};
+window.guardarCamionRegreso=async function(){
+  const placas=normPlacas(document.getElementById('f_reg_placas').value);
+  const folio=document.getElementById('f_reg_folio').value.trim();
+  const ton=parseFloat(document.getElementById('f_reg_ton').value);
+  const obs=document.getElementById('f_reg_obs').value.trim();
+  if(!placas){ toast('Captura las placas del camión','err'); return; }
+  if(isNaN(ton)||ton<=0){ toast('Captura el peso en toneladas','err'); return; }
+  const rec={ obra:obraActiva, fecha:fechaJornada(), placas, folio, ton:+ton.toFixed(2), obs,
+    capturado_por:session.nombre, ts:Date.now() };
+  try{
+    await addDoc(collection(db,'camionesRegreso'), rec);
+    toast('✓ Registrado — no cuenta en toneladas colocadas, se lleva aparte','ok');
+    ['f_reg_placas','f_reg_folio','f_reg_ton','f_reg_obs'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+    _renderRegresosLista();
+  }catch(e){ toast('Error: '+e.message,'err'); }
+};
+async function _cargarRegresos(){
+  const q=query(collection(db,'camionesRegreso'), where('obra','==',obraActiva));
+  const snap=await getDocs(q);
+  const out=[]; snap.forEach(d=>out.push({_id:d.id,...d.data()}));
+  return out.sort((a,b)=>(b.ts||0)-(a.ts||0));
+}
+async function _renderRegresosLista(){
+  const el=document.getElementById('regresoLista'); if(!el) return;
+  el.innerHTML='<div style="color:var(--muted);font-size:11px">Cargando…</div>';
+  try{
+    const todos=await _cargarRegresos();
+    window._regresosCache=todos;
+    const hoy=todos.filter(r=>r.fecha===fechaJornada());
+    if(!hoy.length){ el.innerHTML='<div style="color:var(--muted);font-size:11px">Sin regresos capturados hoy.</div>'; return; }
+    el.innerHTML=hoy.map(r=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--bord)">
+      <span>${r.placas} ${r.folio?'· '+r.folio:''} · <b>${r.ton} ton</b>${r.obs?' · '+r.obs:''}</span>
+      <button onclick="eliminarCamionRegreso('${r._id}')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:12px">✕</button>
+    </div>`).join('');
+  }catch(e){ el.innerHTML='<div style="color:var(--red);font-size:11px">Error al cargar: '+e.message+'</div>'; }
+}
+window.eliminarCamionRegreso=async function(id){
+  if(!confirm('¿Eliminar este registro de regreso?')) return;
+  try{ await deleteDoc(doc(db,'camionesRegreso',id)); toast('Eliminado','ok'); _renderRegresosLista(); }
+  catch(e){ toast('Error: '+e.message,'err'); }
+};
+window.exportarRegresosExcel=async function(){
+  const todos = window._regresosCache || await _cargarRegresos();
+  if(!todos.length){ toast('No hay regresos para exportar','warn'); return; }
+  const rows=todos.map(r=>({Fecha:r.fecha,Placas:r.placas,Folio:r.folio||'',Toneladas:r.ton,Observación:r.obs||'',Capturó:r.capturado_por||''}));
+  const ws=XLSX.utils.json_to_sheet(rows);
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Camiones regresados');
+  XLSX.writeFile(wb, `camiones_regresados_${obraActiva}.xlsx`);
+};
 window.aplicarTipoCamion=function(){
   const sel=document.getElementById('f_camion'); if(!sel) return;
   const v=sel.value;
@@ -3263,7 +3385,7 @@ const TIRO_COLS = [
 ];
 let _tiroColsOff = new Set(JSON.parse(localStorage.getItem('t039_tiro_cols_off')||'[]'));
 let _tiroColsPanelOpen = false; // mantiene el desplegable de columnas abierto entre re-renders
-let _tiroFiltroAbierto = true; // colapsa el filtro de días para darle más espacio a la tabla
+let _tiroFiltroAbierto = false; // arranca colapsado — el calendario completo ya no se ve por default
 window.toggleTiroFiltro=function(){ _tiroFiltroAbierto=!_tiroFiltroAbierto; renderTablaTiro(); };
 let _tiroColsDraft = new Set(_tiroColsOff); // selección en curso mientras el panel está abierto (no se aplica hasta cerrar)
 // Marca/desmarca en el borrador SIN re-renderizar la tabla — así el checkbox no pierde el desplegable abierto.
@@ -4640,6 +4762,10 @@ window._maqCalcHoras=function(){
   }
   const out=document.getElementById('maqHorasCalc');
   if(out) out.textContent = horas!=null ? horas.toFixed(2)+' hrs' : '—';
+  // Alerta: más de 24 hrs entre horómetro inicial y final normalmente es un error de captura
+  // (número invertido, horómetro de otro equipo, etc.) — se avisa sin bloquear, por si es real.
+  const warn=document.getElementById('maqHorasWarn');
+  if(warn) warn.style.display = (horas!=null && horas>24) ? 'block' : 'none';
   const rendDiv=document.getElementById('maqRendimiento');
   const fechaAct=(document.getElementById('maq_fecha')||{}).value||fechaJornada();
   const vol=(_maqConceptos||[]).reduce((s,c)=>s+(c.manual ? (parseFloat(c.volumenManual)||0) : _volumenRealDiaConcepto(fechaAct,c.id)),0);
@@ -4846,35 +4972,32 @@ window.switchMaqSub=function(cual){
   if(cual==='reportesop') renderMaqReportesOp();
   if(cual==='resumen') renderMaqResumen();
 };
-// Vista SOLO INFORMATIVA de todos los equipos de la obra — nada se abre ni se edita al tocar,
-// es para ver de un vistazo horómetro inicial/actual, horas y diésel acumulados EN ESTA OBRA,
-// y qué reparaciones tiene pendientes cada máquina.
+// Cuadrícula de equipos: verde = ya tiene registro completo HOY (se cierra solo al capturar el
+// horómetro final, no hay botón aparte de "cerrar"). Clic en un equipo abre su Registro del día
+// ya seleccionado, para no tener que buscarlo de nuevo en el desplegable.
 function renderMaqResumen(){
   const body=document.getElementById('maqResumenBody'); if(!body) return;
   const eqsObra=_equipos.filter(e=>(e.obra||'039')===obraActiva && e.activo!==false);
   if(!eqsObra.length){ body.innerHTML='<div style="font-size:13px;color:var(--muted);text-align:center;padding:20px">Sin equipos activos en esta obra.</div>'; return; }
-  body.innerHTML = eqsObra.map(eq=>{
-    const bitsObra=_bitacoras.filter(b=>b.equipoId===eq._id && (b.obra||'039')===obraActiva);
-    const horasObra=bitsObra.reduce((s,b)=>s+(b.horasTrabajadas||0),0);
-    const dieselObra=bitsObra.reduce((s,b)=>s+(b.litrosDieselTotal||0),0);
-    const horAct=_maqUltimoHorometro(eq._id);
-    const problemas=[];
-    bitsObra.forEach(b=>(b.incidencias||[]).forEach(i=>{ if(!i.resuelto) problemas.push(i); }));
-    return `<div style="background:var(--surf);border:1px solid var(--bord);border-radius:10px;padding:14px;margin-bottom:10px">
-      <div style="font-size:16px;font-weight:800;color:var(--gold);margin-bottom:8px">🚜 ${eq.nombre}${eq.numero?' · '+eq.numero:''}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-        <div style="font-size:13px;color:var(--txt)">Horómetro inicial (obra)<br><b style="font-size:15px">${eq.horometroLlegada!=null?eq.horometroLlegada:'—'}</b></div>
-        <div style="font-size:13px;color:var(--txt)">Horómetro actual<br><b style="font-size:15px">${horAct!=null?horAct:'—'}</b></div>
-        <div style="font-size:13px;color:var(--txt)">Horas trabajadas (obra)<br><b style="font-size:15px">${horasObra.toFixed(1)} hrs</b></div>
-        <div style="font-size:13px;color:var(--txt)">Diésel acumulado (obra)<br><b style="font-size:15px">${dieselObra.toFixed(0)} L</b></div>
-      </div>
-      <div style="font-size:13px;color:${problemas.length?'#dc2626':'#22c55e'};font-weight:700">
-        ${problemas.length?`⚠️ ${problemas.length} reparación(es) pendiente(s):`:'✓ Sin reparaciones pendientes'}
-      </div>
-      ${problemas.length?`<div style="font-size:13px;color:var(--txt);margin-top:4px">${problemas.map(p=>'• '+(p.hora?p.hora+' — ':'')+p.descripcion).join('<br>')}</div>`:''}
-    </div>`;
-  }).join('');
+  const hoy=fechaJornada();
+  body.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px">
+    ${eqsObra.map(eq=>{
+      const bitHoy=_bitacoras.find(b=>b.equipoId===eq._id && (b.obra||'039')===obraActiva && b.fecha===hoy);
+      const completo = bitHoy && bitHoy.horasTrabajadas!=null;
+      const problemas=[]; _bitacoras.filter(b=>b.equipoId===eq._id && (b.obra||'039')===obraActiva).forEach(b=>(b.incidencias||[]).forEach(i=>{ if(!i.resuelto) problemas.push(i); }));
+      return `<button onclick="_maqAbrirDesdeResumen('${eq._id}')" style="text-align:left;padding:12px;border-radius:10px;cursor:pointer;border:2px solid ${completo?'#22c55e':'var(--bord)'};background:${completo?'rgba(34,197,94,.12)':'var(--surf)'};color:var(--txt)">
+        <div style="font-weight:800;font-size:13px;color:${completo?'#22c55e':'var(--gold)'}">${completo?'✓ ':''}🚜 ${eq.nombre}${eq.numero?' · '+eq.numero:''}</div>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:4px">${completo?'Hoy: '+bitHoy.horasTrabajadas.toFixed(1)+' hrs':'Sin registrar hoy'}</div>
+        ${problemas.length?`<div style="font-size:10px;color:#dc2626;font-weight:700;margin-top:3px">⚠️ ${problemas.length} pendiente(s)</div>`:''}
+      </button>`;
+    }).join('')}
+  </div>`;
 }
+window._maqAbrirDesdeResumen=function(equipoId){
+  switchMaqSub('bitacora');
+  const sel=document.getElementById('maq_equipo');
+  if(sel){ sel.value=equipoId; renderMaqEquipoInfo(); _maqAutorellenarOperador(); _maqCargarOAutorellenar(); }
+};
 // Bandeja de reportes que mandan los operadores desde su link público (sin login). Cada uno trae
 // horómetro, diésel y anomalía "en crudo" — aquí se revisan uno por uno: "Usar" pre-llena el
 // formulario del día para ESE equipo con esos datos (tú confirmas/ajustas y guardas normal), o
@@ -7311,13 +7434,27 @@ window.recalcularTodos = async function() {
 };
 
 // ═══ TABS ═══
+const TAB_LABELS={captura:'📋 Captura',maquinaria:'🚜 Maquinaria',viajes:'📄 Viajes',reporte:'📊 Reporte',tiro:'📋 Tiro',ajustes:'⚙️ Ajustes'};
+// Modo enfocado: al entrar a una pestaña, se oculta el header/selector de obra/barra de pestañas
+// para darle toda la pantalla al contenido — con un botón para regresar a la vista completa.
+window.regresarVistaCompleta=function(){
+  document.getElementById('fullHeader').style.display='';
+  document.getElementById('focusHeader').style.display='none';
+};
+function _entrarModoEnfocado(id){
+  document.getElementById('fullHeader').style.display='none';
+  const fh=document.getElementById('focusHeader'); if(fh) fh.style.display='flex';
+  const lblObra=document.getElementById('focusObraLbl'); if(lblObra) lblObra.textContent=(OBRAS[obraActiva]&&OBRAS[obraActiva].nombre)||obraActiva||'—';
+  const lblTab=document.getElementById('focusTabLbl'); if(lblTab) lblTab.textContent=TAB_LABELS[id]||id;
+}
 window.switchTab=function(id,el) {
   document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.getElementById('view-'+id).classList.add('active');
   el.classList.add('active');
+  _entrarModoEnfocado(id);
   if (id==='viajes') renderList();
-  else if (id==='maquinaria'){ renderMaqEquipoSelect(); const fe=document.getElementById('maq_fecha'); if(fe&&!fe.value) fe.value=fechaJornada(); _maqRenderConceptos(); _maqRenderIncidencias(); _maqRenderDiesel(); _maqCargarOAutorellenar(); renderMaqReportesOp(); switchMaqSub('resumen'); }
+  else if (id==='maquinaria'){ renderMaqEquipoSelect(); const fe=document.getElementById('maq_fecha'); if(fe&&!fe.value) fe.value=fechaJornada(); _maqRenderConceptos(); _maqRenderIncidencias(); _maqRenderDiesel(); _maqCargarOAutorellenar(); renderMaqReportesOp(); switchMaqSub('bitacora'); }
   else if (id==='rep-camiones') renderRepCamiones();
   else if (id==='rep-volumen') renderRepVolumen();
   else if (id==='reporte') renderReporte();
