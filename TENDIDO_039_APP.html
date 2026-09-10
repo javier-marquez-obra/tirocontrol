@@ -296,10 +296,6 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
     <select id="obraSelect" onchange="cambiarObra(this.value)" style="background:var(--bg);border:1px solid var(--bord);color:var(--gold);border-radius:8px;padding:5px 10px;font-size:13px;font-weight:700;flex:1;min-width:140px;max-width:320px"></select>
     <button class="be" onclick="nuevaObra()" title="Dar de alta una obra nueva" style="padding:5px 10px;font-size:12px;white-space:nowrap">➕ Nueva obra</button>
     <button class="be" id="btnEliminarObra" onclick="eliminarObra()" title="Eliminar la obra activa (solo admin)" style="padding:5px 10px;font-size:12px;white-space:nowrap;border-color:#ef4444;color:#ef4444;display:none">🗑 Eliminar obra</button>
-    <button class="be" onclick="abrirConfigCarriles()" title="Definir carriles y ancho sugerido por tramo" style="padding:5px 10px;font-size:12px;white-space:nowrap">🛣️ Carriles</button>
-    <button class="be" onclick="abrirConfigCamiones()" title="Densidad del material y capacidad en m³ de cada placa, para calcular toneladas sin báscula" style="padding:5px 10px;font-size:12px;white-space:nowrap">🚛 Camiones</button>
-    <button class="be" id="btnConfigCatalogo" onclick="abrirConfigCatalogo()" title="Definir conceptos, cantidades y precios de la obra activa" style="padding:5px 10px;font-size:12px;white-space:nowrap;display:none">📋 Catálogo</button>
-    <button class="be" id="btnNormConceptos" onclick="document.getElementById('normConceptosModal').style.display='flex';diagnosticarConceptos()" title="Corregir viajes viejos cuyo concepto no coincide con el catálogo actual" style="padding:5px 10px;font-size:12px;white-space:nowrap;display:none">🔧 Normalizar</button>
     <button class="be" id="btnToggleMaquinaria" onclick="toggleMaquinariaObra()" title="Prende/apaga el módulo de Maquinaria SOLO en esta obra (en pruebas)" style="padding:5px 10px;font-size:12px;white-space:nowrap;display:none">🚜 Maquinaria</button>
     <select id="themeSel" onchange="setTheme(this.value)" title="Cambiar tema de color" style="background:var(--bg);border:1px solid var(--bord);color:var(--txt);border-radius:8px;padding:5px 8px;font-size:12px;font-weight:700;white-space:nowrap">
       <option value="dark">🌙 Oscuro</option>
@@ -578,6 +574,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
     <div class="tab" onclick="switchTab('viajes',this)">📄 VIAJES</div>
     <div class="tab" onclick="switchTab('maquinaria',this)" id="tabMaquinaria" style="display:none">🚜 MAQUINARIA</div>
     <div class="tab locked" id="tab-reporte" onclick="switchTab('reporte',this)">📊 REPORTE</div>
+    <div class="tab" onclick="switchTab('ajustes',this)">⚙️ AJUSTES</div>
   </div>
 
   <!-- CAPTURA -->
@@ -999,7 +996,28 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
     </div>
     <div id="dashContent"></div>
   </div>
+  <div class="view" id="view-ajustes">
+    <div style="display:flex;flex-direction:column;gap:10px;max-width:480px">
+      <button class="be" onclick="abrirConfigCarriles()" style="text-align:left;padding:14px;display:flex;flex-direction:column;gap:2px">
+        <span style="font-weight:800">🛣️ Carriles</span>
+        <span style="font-size:11px;color:var(--muted);font-weight:400">Definir carriles y ancho sugerido por tramo</span>
+      </button>
+      <button class="be" onclick="abrirConfigCamiones()" style="text-align:left;padding:14px;display:flex;flex-direction:column;gap:2px">
+        <span style="font-weight:800">🚛 Camiones</span>
+        <span style="font-size:11px;color:var(--muted);font-weight:400">Peso volumétrico y capacidad en m³ de cada placa, para calcular toneladas sin báscula</span>
+      </button>
+      <button class="be" id="btnConfigCatalogo" onclick="abrirConfigCatalogo()" style="text-align:left;padding:14px;display:none">
+        <span style="font-weight:800">📋 Catálogo</span><br>
+        <span style="font-size:11px;color:var(--muted);font-weight:400">Definir conceptos, cantidades y precios de la obra activa</span>
+      </button>
+      <button class="be" id="btnNormConceptos" onclick="document.getElementById('normConceptosModal').style.display='flex';diagnosticarConceptos()" style="text-align:left;padding:14px;display:none">
+        <span style="font-weight:800">🔧 Normalizar</span><br>
+        <span style="font-size:11px;color:var(--muted);font-weight:400">Corregir viajes viejos cuyo concepto no coincide con el catálogo actual</span>
+      </button>
+    </div>
+  </div>
 </div>
+
 
 <!-- LIGHTBOX -->
 <div class="lightbox" id="lightbox" onclick="closeLightbox()">
@@ -7025,7 +7043,7 @@ function renderReporte() {
     </div>
     <div class="er" style="margin-top:6px;border-top:1px solid var(--bord);padding-top:8px">
       <button class="be full" id="btnRecalc" onclick="recalcularTodos()" style="border-color:var(--gold);color:var(--gold)">🔄 Recalcular TODOS los viajes</button>
-      <button class="be danger" onclick="confirmClear()">🗑 Limpiar todo</button>
+      <button class="be" onclick="limpiarFiltrosReporte()">🧹 Limpiar filtros (no borra datos)</button>
     </div>`;
 }
 window.exportReporteUniversal=function(){
@@ -7189,13 +7207,15 @@ function dl(content, filename) {
   a.download=filename; a.click();
 }
 
-window.confirmClear=async function() {
-  if (session.rol!=='admin') return;
-  if (!confirm('¿Eliminar TODOS los registros? Acción irreversible.')) return;
-  // Delete all - handled individually
-  toast('Usa Firebase console para limpieza masiva','warn');
+// Limpia los filtros de la pestaña Reporte (días, columnas, unidad de gráficos) — NUNCA borra
+// ningún viaje ni dato guardado, solo regresa esta vista a su estado por default.
+window.limpiarFiltrosReporte=function(){
+  _repDias=null;
+  localStorage.setItem('t039_rep_cols', JSON.stringify(REP_DEFAULT.slice()));
+  try{ localStorage.setItem('t039_rep_unidad','ton'); }catch(e){}
+  toast('Filtros del reporte reiniciados — tus datos siguen igual','ok');
+  renderReporte();
 };
-
 // ═══ RECALCULAR TODOS CON FÓRMULA CORRECTA ═══
 window.recalcularTodos = async function() {
   if (session.rol !== 'admin') { toast('Solo el admin puede recalcular','err'); return; }
