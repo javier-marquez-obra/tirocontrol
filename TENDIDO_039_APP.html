@@ -36,6 +36,20 @@ html[data-theme="sepia"]{
   --gold:#946410;--green:#3a7549;--red:#a8452c;--blue:#3a6ea5;--purple:#75539f;
   --txt:#392e20;--muted:#76664e;
 }
+/* CAMPO (anti-sol): superficies mate y sin blancos brillosos, para que el sol directo no rebote
+   en la pantalla — colores menos saturados que el resto, pero con texto de alto contraste para
+   que se siga leyendo bien afuera. */
+html[data-theme="campo"]{
+  --bg:#3a3c37;--surf:#454742;--card:#4f514b;--bord:#5c5e56;
+  --gold:#d9a441;--green:#6cb587;--red:#d97a6c;--blue:#84a6cc;--purple:#ab97c9;
+  --txt:#f3f1ea;--muted:#b3b2a7;
+}
+/* OFICINA: clara y limpia, para escritorio/interior donde el sol no es problema. */
+html[data-theme="oficina"]{
+  --bg:#f4f6f8;--surf:#ffffff;--card:#ffffff;--bord:#d7dee6;
+  --gold:#b8860b;--green:#0f8a5f;--red:#c0392b;--blue:#1f6fd1;--purple:#6c4fb5;
+  --txt:#1e2733;--muted:#66727e;
+}
 html,body{height:100%;background:var(--bg);color:var(--txt);font-family:var(--sans);overflow:hidden}
 /* SPLASH */
 #splash{position:fixed;inset:0;background:var(--bg);z-index:999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px}
@@ -300,6 +314,8 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
       <option value="light">☀️ Claro</option>
       <option value="slate">📄 Gris</option>
       <option value="sepia">🟤 Sepia</option>
+      <option value="campo">🏗️ Campo (anti-sol)</option>
+      <option value="oficina">🏢 Oficina</option>
     </select>
   </div>
   <div id="carrilesModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center;padding:14px">
