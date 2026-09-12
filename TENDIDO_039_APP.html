@@ -673,16 +673,54 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
     <div class="fc" id="regresoCard" style="border:1px solid #7a2e2e">
       <h3 onclick="toggleRegresoCard()" style="cursor:pointer;user-select:none">🔙 Camión regresó cargado <span style="font-size:10px;font-weight:400;color:var(--muted)">(toca para {abrir/cerrar})</span></h3>
       <div id="regresoBody" style="display:none">
-        <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Para camiones que regresan sin descargar. Queda registrado como evidencia, pero <b>no se suma a las toneladas colocadas</b> — se lleva aparte, para pagarle al transportista y para reclamos de mezcla.</div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Para camiones que regresan sin descargar. Queda registrado como evidencia, pero <b>no se suma a las toneladas colocadas</b> — se lleva aparte, para pagarle al transportista y para reclamos de mezcla. Puedes capturar de días anteriores, no solo de hoy.</div>
         <div class="fg">
+          <div class="field"><label>Fecha</label><input type="date" id="f_reg_fecha"></div>
           <div class="field"><label>Placas</label><input type="text" id="f_reg_placas" placeholder="ABC1234" style="text-transform:uppercase"></div>
-          <div class="field"><label>Folio (vale/remisión)</label><input type="text" id="f_reg_folio" placeholder="V-0001"></div>
+          <div class="field"><label>№ Vale</label><input type="text" id="f_reg_vale" placeholder="V-0001"></div>
+          <div class="field"><label>№ Remisión</label><input type="text" id="f_reg_remision" placeholder="R-0001"></div>
           <div class="field"><label>Peso (ton)</label><input type="number" id="f_reg_ton" step="0.01" inputmode="decimal" placeholder="22.50"></div>
+          <div class="field"><label>De KM (si ya iba hacia un tramo)</label><input type="text" id="f_reg_kde" placeholder="46+200"></div>
+          <div class="field"><label>A KM (opcional)</label><input type="text" id="f_reg_ka" placeholder="46+800"></div>
           <div class="field ff"><label>Observación</label><input type="text" id="f_reg_obs" placeholder="Motivo del regreso"></div>
         </div>
         <button class="btn-save" style="margin-top:8px;background:rgba(220,38,38,.1);border:1px solid #7a2e2e;color:#ef4444;padding:10px" onclick="guardarCamionRegreso()">📥 GUARDAR REGRESO</button>
-        <div style="font-size:11px;font-weight:700;color:var(--gold);margin-top:12px">Regresos de hoy</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">
+          <span style="font-size:11px;font-weight:700;color:var(--gold)">Regresos capturados</span>
+          <select id="f_reg_lista_dias" onchange="_renderRegresosLista()" style="background:var(--bg);border:1px solid var(--bord);border-radius:6px;padding:3px 6px;font-size:11px;color:var(--txt)">
+            <option value="hoy">Solo hoy</option>
+            <option value="todos">Todos</option>
+          </select>
+        </div>
         <div id="regresoLista" style="margin-top:6px;font-size:12px"></div>
+      </div>
+    </div>
+
+    <!-- CAMIÓN CANCELADO / TIEMPO DE ESPERA EN PLANTA — el tiro se canceló y el camión se quedó
+         esperando; si pasa de 2 hrs normalmente se le paga estancia al transportista. Tampoco
+         cuenta para toneladas/volumen colocado — es un gasto de tiempo/espera, no de material. -->
+    <div class="fc" id="canceladoCard" style="border:1px solid #7a5a2e">
+      <h3 onclick="toggleCanceladoCard()" style="cursor:pointer;user-select:none">🅿️ Camión cancelado / tiempo de espera <span style="font-size:10px;font-weight:400;color:var(--muted)">(toca para {abrir/cerrar})</span></h3>
+      <div id="canceladoBody" style="display:none">
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Para cuando se pidió un camión a planta, se canceló el tiro, y se quedó esperando. Si pasó de 2 hrs de espera, normalmente se le paga estancia al transportista. No cuenta para toneladas ni volumen.</div>
+        <div class="fg">
+          <div class="field"><label>Fecha</label><input type="date" id="f_can_fecha"></div>
+          <div class="field"><label>Placas</label><input type="text" id="f_can_placas" placeholder="ABC1234" style="text-transform:uppercase"></div>
+          <div class="field"><label>Hora solicitado</label><input type="time" id="f_can_hora_ini"></div>
+          <div class="field"><label>Hora cancelado / se fue</label><input type="time" id="f_can_hora_fin"></div>
+          <div class="field"><label>Horas de espera (si no marcas horas arriba)</label><input type="number" id="f_can_horas" step="0.25" inputmode="decimal" placeholder="ej. 2.5"></div>
+          <div class="field ff"><label>Observación</label><input type="text" id="f_can_obs" placeholder="Motivo de la cancelación"></div>
+        </div>
+        <div id="canPreview" style="display:none;margin-top:6px;font-size:12px;font-weight:700;padding:6px 8px;border-radius:6px"></div>
+        <button class="btn-save" style="margin-top:8px;background:rgba(180,131,15,.12);border:1px solid #7a5a2e;color:#b8830f;padding:10px" onclick="guardarCamionCancelado()">📥 GUARDAR CANCELACIÓN</button>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px">
+          <span style="font-size:11px;font-weight:700;color:var(--gold)">Cancelados capturados</span>
+          <select id="f_can_lista_dias" onchange="_renderCanceladosLista()" style="background:var(--bg);border:1px solid var(--bord);border-radius:6px;padding:3px 6px;font-size:11px;color:var(--txt)">
+            <option value="hoy">Solo hoy</option>
+            <option value="todos">Todos</option>
+          </select>
+        </div>
+        <div id="canceladoLista" style="margin-top:6px;font-size:12px"></div>
       </div>
     </div>
 
@@ -2911,40 +2949,121 @@ window.toggleRegresoCard=function(){
   const b=document.getElementById('regresoBody'); if(!b) return;
   const abrir = b.style.display==='none';
   b.style.display = abrir?'':'none';
-  if(abrir) _renderRegresosLista();
+  if(abrir){
+    const fe=document.getElementById('f_reg_fecha'); if(fe&&!fe.value) fe.value=fechaJornada();
+    _renderRegresosLista();
+  }
 };
-// El regreso se guarda como un viaje más (tipo:'regreso'), sin conceptos/kde/ka/carril — así
-// aparece junto a los demás viajes del día en Viajes y en la Tabla de tiro (columna "Regreso
-// mezcla"), pero nunca entra a los totales de m²/m³/ton porque no trae ningún concepto que sumar.
+// El regreso se guarda como un viaje más (tipo:'regreso'), sin conceptos/carril — así aparece
+// junto a los demás viajes del día en Viajes y en la Tabla de tiro (columna "Regreso mezcla"),
+// pero nunca entra a los totales de m²/m³/ton porque no trae ningún concepto que sumar. Vale,
+// remisión, De KM y A KM usan los mismos nombres de campo que un viaje normal — sin carril,
+// nunca los toma en cuenta ningún cálculo de kilometraje, pero sí aparecen bien en los reportes.
+// La fecha es editable para poder capturar regresos de días anteriores, no solo de hoy.
 window.guardarCamionRegreso=async function(){
+  const fecha=document.getElementById('f_reg_fecha').value || fechaJornada();
   const placas=normPlacas(document.getElementById('f_reg_placas').value);
-  const folio=document.getElementById('f_reg_folio').value.trim();
+  const vale=document.getElementById('f_reg_vale').value.trim();
+  const remision=document.getElementById('f_reg_remision').value.trim();
   const ton=parseFloat(document.getElementById('f_reg_ton').value);
+  const kdeTxt=document.getElementById('f_reg_kde').value.trim();
+  const kaTxt=document.getElementById('f_reg_ka').value.trim();
   const obs=document.getElementById('f_reg_obs').value.trim();
   if(!placas){ toast('Captura las placas del camión','err'); return; }
   if(isNaN(ton)||ton<=0){ toast('Captura el peso en toneladas','err'); return; }
-  const rec={ obra:obraActiva, fecha:fechaJornada(), placas, tipo:'regreso',
-    regreso_folio:folio, regreso_ton:+ton.toFixed(2), regreso_obs:obs,
+  const rec={ obra:obraActiva, fecha, placas, tipo:'regreso',
+    vale, remision, regreso_ton:+ton.toFixed(2), observaciones:obs,
+    kde:kdeTxt?(isNaN(parseCad(kdeTxt))?null:parseCad(kdeTxt)):null, ka:kaTxt?(isNaN(parseCad(kaTxt))?null:parseCad(kaTxt)):null,
     capturado_por:session.nombre, ts:Date.now() };
   try{
     await addDoc(collection(db,'viajes'), rec);
-    toast('✓ Registrado — no cuenta en toneladas colocadas, se lleva aparte','ok');
-    ['f_reg_placas','f_reg_folio','f_reg_ton','f_reg_obs'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+    toast('✓ Registrado ('+fecha+') — no cuenta en toneladas colocadas, se lleva aparte','ok');
+    ['f_reg_placas','f_reg_vale','f_reg_remision','f_reg_ton','f_reg_kde','f_reg_ka','f_reg_obs'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
     _renderRegresosLista();
   }catch(e){ toast('Error: '+e.message,'err'); }
 };
 function _renderRegresosLista(){
   const el=document.getElementById('regresoLista'); if(!el) return;
-  const hoy=(recordsAll||[]).filter(r=>r.tipo==='regreso' && r.obra===obraActiva && r.fecha===fechaJornada());
-  if(!hoy.length){ el.innerHTML='<div style="color:var(--muted);font-size:11px">Sin regresos capturados hoy.</div>'; return; }
-  el.innerHTML=hoy.map(r=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--bord)">
-    <span>${r.placas} ${r.regreso_folio?'· '+r.regreso_folio:''} · <b>${r.regreso_ton} ton</b>${r.regreso_obs?' · '+r.regreso_obs:''}</span>
+  const soloHoy=(document.getElementById('f_reg_lista_dias')||{}).value!=='todos';
+  const hoy=fechaJornada();
+  const lista=(recordsAll||[]).filter(r=>r.tipo==='regreso' && r.obra===obraActiva && (!soloHoy||r.fecha===hoy)).sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')||(b.ts||0)-(a.ts||0));
+  if(!lista.length){ el.innerHTML='<div style="color:var(--muted);font-size:11px">Sin regresos capturados'+(soloHoy?' hoy':'')+'.</div>'; return; }
+  el.innerHTML=lista.map(r=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--bord)">
+    <span><b>${r.fecha}</b> · ${r.placas} ${r.vale?'· V:'+r.vale:''}${r.remision?' · R:'+r.remision:''} · <b>${r.regreso_ton} ton</b>${r.observaciones?' · '+r.observaciones:''}</span>
     <button onclick="eliminarCamionRegreso('${r._id}')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:12px">✕</button>
   </div>`).join('');
 }
 window.eliminarCamionRegreso=async function(id){
   if(!confirm('¿Eliminar este registro de regreso?')) return;
   try{ await deleteDoc(doc(db,'viajes',id)); toast('Eliminado','ok'); _renderRegresosLista(); }
+  catch(e){ toast('Error: '+e.message,'err'); }
+};
+// ── Camión cancelado / tiempo de espera en planta: se pidió el camión, se canceló el tiro, y se
+// quedó esperando. No es material regresado (nunca cargó ni descargó), es tiempo de espera que
+// normalmente se paga como estancia al transportista si pasa de 2 hrs. Tampoco cuenta para
+// toneladas ni volumen — se guarda igual que 'regreso', pero con tipo:'cancelado'. ──
+window.toggleCanceladoCard=function(){
+  const b=document.getElementById('canceladoBody'); if(!b) return;
+  const abrir = b.style.display==='none';
+  b.style.display = abrir?'':'none';
+  if(abrir){
+    const fe=document.getElementById('f_can_fecha'); if(fe&&!fe.value) fe.value=fechaJornada();
+    _renderCanceladosLista();
+  }
+};
+function _canCalcHoras(){
+  const hi=document.getElementById('f_can_hora_ini').value, hf=document.getElementById('f_can_hora_fin').value;
+  const manual=parseFloat(document.getElementById('f_can_horas').value);
+  let horas=null;
+  if(hi&&hf){ horas=_durMin(hi+':00',hf+':00')/60; }
+  else if(!isNaN(manual)) horas=manual;
+  const prev=document.getElementById('canPreview');
+  if(horas==null){ prev.style.display='none'; return null; }
+  const pasaDe2=horas>2;
+  prev.style.display='block';
+  prev.style.background = pasaDe2?'rgba(220,38,38,.12)':'rgba(34,197,94,.12)';
+  prev.style.color = pasaDe2?'#ef4444':'#22c55e';
+  prev.textContent = `${horas.toFixed(2)} hrs de espera` + (pasaDe2?' — pasa de 2 hrs, normalmente aplica pago de estancia':' — dentro del margen normal, sin estancia');
+  return horas;
+}
+['f_can_hora_ini','f_can_hora_fin','f_can_horas'].forEach(id=>{
+  document.addEventListener('DOMContentLoaded',()=>{ const el=document.getElementById(id); if(el) el.addEventListener('input',_canCalcHoras); });
+});
+window.guardarCamionCancelado=async function(){
+  const fecha=document.getElementById('f_can_fecha').value || fechaJornada();
+  const placas=normPlacas(document.getElementById('f_can_placas').value);
+  const horaIni=document.getElementById('f_can_hora_ini').value;
+  const horaFin=document.getElementById('f_can_hora_fin').value;
+  const obs=document.getElementById('f_can_obs').value.trim();
+  const horas=_canCalcHoras();
+  if(!placas){ toast('Captura las placas del camión','err'); return; }
+  if(horas==null){ toast('Captura las horas de espera (con horarios o directo)','err'); return; }
+  const rec={ obra:obraActiva, fecha, placas, tipo:'cancelado',
+    can_hora_ini:horaIni||null, can_hora_fin:horaFin||null, can_horas:+horas.toFixed(2),
+    can_pago_estancia: horas>2, observaciones:obs,
+    capturado_por:session.nombre, ts:Date.now() };
+  try{
+    await addDoc(collection(db,'viajes'), rec);
+    toast('✓ Registrado ('+fecha+') — '+horas.toFixed(2)+' hrs de espera'+(horas>2?' · pago de estancia':''),'ok');
+    ['f_can_placas','f_can_hora_ini','f_can_hora_fin','f_can_horas','f_can_obs'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+    document.getElementById('canPreview').style.display='none';
+    _renderCanceladosLista();
+  }catch(e){ toast('Error: '+e.message,'err'); }
+};
+function _renderCanceladosLista(){
+  const el=document.getElementById('canceladoLista'); if(!el) return;
+  const soloHoy=(document.getElementById('f_can_lista_dias')||{}).value!=='todos';
+  const hoy=fechaJornada();
+  const lista=(recordsAll||[]).filter(r=>r.tipo==='cancelado' && r.obra===obraActiva && (!soloHoy||r.fecha===hoy)).sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')||(b.ts||0)-(a.ts||0));
+  if(!lista.length){ el.innerHTML='<div style="color:var(--muted);font-size:11px">Sin cancelaciones capturadas'+(soloHoy?' hoy':'')+'.</div>'; return; }
+  el.innerHTML=lista.map(r=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--bord)">
+    <span><b>${r.fecha}</b> · ${r.placas} · <b>${r.can_horas} hrs</b>${r.can_pago_estancia?' · <span style="color:#ef4444;font-weight:700">estancia</span>':''}${r.observaciones?' · '+r.observaciones:''}</span>
+    <button onclick="eliminarCamionCancelado('${r._id}')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:12px">✕</button>
+  </div>`).join('');
+}
+window.eliminarCamionCancelado=async function(id){
+  if(!confirm('¿Eliminar este registro de cancelación?')) return;
+  try{ await deleteDoc(doc(db,'viajes',id)); toast('Eliminado','ok'); _renderCanceladosLista(); }
   catch(e){ toast('Error: '+e.message,'err'); }
 };
 window.aplicarTipoCamion=function(){
@@ -3391,7 +3510,7 @@ const TIRO_COLS = [
   {k:'kmini',label:'KM ini'},{k:'kmfin',label:'KM fin'},{k:'long',label:'Long.'},{k:'ancho',label:'Ancho'},
   {k:'m2',label:'m²'},{k:'m3',label:'m³'},{k:'ton',label:'Ton'},{k:'esp',label:'Esp. real'},
   {k:'tprod',label:'T. Prod'},{k:'ttend',label:'T. Tend'},{k:'gan',label:'Ganancia'},{k:'per',label:'Pérdida'},
-  {k:'regreso',label:'Regreso mezcla'}
+  {k:'regreso',label:'Regreso / Cancelado'}
 ];
 let _tiroColsOff = new Set(JSON.parse(localStorage.getItem('t039_tiro_cols_off')||'[]'));
 let _tiroColsPanelOpen = false; // mantiene el desplegable de columnas abierto entre re-renders
@@ -4024,7 +4143,7 @@ function renderTablaTiro(){
       ${sc('fecha')?`<td>${primera?fechaTxt:''}</td>`:''}
       ${sc('placas')?`<td style="font-weight:700">${primera?(v.placas||''):''}</td>`:''}
       ${sc('material')?`<td>${primera?(v.material||''):''}</td>`:''}
-      ${sc('concepto')?`<td style="text-align:left;color:${v.tipo==='regreso'?'#ef4444':'var(--gold)'};font-weight:700">${v.tipo==='regreso'?'🔙 REGRESO':(lblC||'—')}</td>`:''}
+      ${sc('concepto')?`<td style="text-align:left;color:${v.tipo==='regreso'?'#ef4444':(v.tipo==='cancelado'?'#b8830f':'var(--gold)')};font-weight:700">${v.tipo==='regreso'?'🔙 REGRESO':(v.tipo==='cancelado'?'🅿️ CANCELADO':(lblC||'—'))}</td>`:''}
       ${sc('carril')?`<td style="font-weight:700;color:var(--blue)">${carrilC}</td>`:''}
       ${sc('unidad')?`<td>${row.unidad}</td>`:''}
       ${sc('kmini')?`<td>${kdeC!=null?fmtCad(kdeC):'—'}</td>`:''}
@@ -4039,7 +4158,7 @@ function renderTablaTiro(){
       ${sc('ttend')?`<td>${primera?ttTxt:''}</td>`:''}
       ${sc('gan')?`<td class="G">${gan?('+'+gan.toFixed(2)):'—'}</td>`:''}
       ${sc('per')?`<td class="P">${per?('−'+per.toFixed(2)):'—'}</td>`:''}
-      ${sc('regreso')?`<td style="color:#ef4444;font-weight:700">${v.tipo==='regreso'?((+v.regreso_ton||0).toFixed(2)+' ton'+(v.regreso_folio?' · '+v.regreso_folio:'')+(v.regreso_obs?' · '+v.regreso_obs:'')):'—'}</td>`:''}
+      ${sc('regreso')?`<td style="color:#ef4444;font-weight:700">${v.tipo==='regreso'?((+v.regreso_ton||0).toFixed(2)+' ton'+(v.vale?' · V:'+v.vale:'')+(v.remision?' · R:'+v.remision:'')+(v.kde!=null?' · '+fmtCad(v.kde):'')+(v.ka!=null?'→'+fmtCad(v.ka):'')+(v.observaciones?' · '+v.observaciones:'')):(v.tipo==='cancelado'?('🅿️ '+(v.can_horas||0)+' hrs espera'+(v.can_pago_estancia?' · ESTANCIA':'')+(v.observaciones?' · '+v.observaciones:'')):'—')}</td>`:''}
       <td>${primera?`<button class="tiro-mod" onclick="modificarDesdeTiro('${v._id}')" ${editable?'':'disabled'} title="${editable?'Modificar este viaje':motivoBloqueo(v)}">${editable?'✏️ Modificar':'🔒'}</button>`:''}</td>
     </tr>`;
   }).join('');
@@ -4174,10 +4293,19 @@ window.exportarTablaExcel=function(){
     if(v.tipo==='regreso'){
       filas.push({ID:v._id,IDX:0,Fecha:v.fecha,Viaje:'',Placas:v.placas||'',
         Material:'',Concepto:'REGRESO',Carril:'',Sentido:'',
+        'De KM':v.kde!=null?+(+v.kde).toFixed(2):'', ML:0, 'A KM':v.ka!=null?+(+v.ka).toFixed(2):'',
+        Ancho:0, 'm²':0, 'Espesor (cm)':0, 'm³':0, Ton:0, 'Esp.real(cm)':0, 'm³ Real (Ton/Dens)':0,
+        'T.Prod':'', 'T.Tend':'',
+        'Regreso mezcla':(+v.regreso_ton||0)+' ton'+(v.vale?' · V:'+v.vale:'')+(v.remision?' · R:'+v.remision:'')+(v.observaciones?' · '+v.observaciones:'')});
+      return;
+    }
+    if(v.tipo==='cancelado'){
+      filas.push({ID:v._id,IDX:0,Fecha:v.fecha,Viaje:'',Placas:v.placas||'',
+        Material:'',Concepto:'CANCELADO',Carril:'',Sentido:'',
         'De KM':'', ML:0, 'A KM':'',
         Ancho:0, 'm²':0, 'Espesor (cm)':0, 'm³':0, Ton:0, 'Esp.real(cm)':0, 'm³ Real (Ton/Dens)':0,
         'T.Prod':'', 'T.Tend':'',
-        'Regreso mezcla':(+v.regreso_ton||0)+' ton'+(v.regreso_folio?' · '+v.regreso_folio:'')+(v.regreso_obs?' · '+v.regreso_obs:'')});
+        'Regreso mezcla':(v.can_horas||0)+' hrs espera'+(v.can_pago_estancia?' · PAGO ESTANCIA':'')+(v.observaciones?' · '+v.observaciones:'')});
       return;
     }
     _conceptosDe(v).forEach((c,ci)=>{
@@ -6564,8 +6692,9 @@ function renderList() {
   const fechasMostrar=fechasDesc.slice(0,_listDiasVisibles); // solo se DIBUJAN (con fotos) los días recientes
   fechasMostrar.forEach(date=>{
     const rsTodos=bd[date];
-    const rs=rsTodos.filter(r=>r.tipo!=='regreso'); // normales: entran en todos los totales del día
+    const rs=rsTodos.filter(r=>r.tipo!=='regreso'&&r.tipo!=='cancelado'); // normales: entran en todos los totales del día
     const rsRegresos=rsTodos.filter(r=>r.tipo==='regreso'); // regresos: nunca entran a los totales
+    const rsCancelados=rsTodos.filter(r=>r.tipo==='cancelado'); // cancelados: nunca entran a los totales
     const tt=rs.reduce((s,r)=>s+r.ton_recibidas,0);
     const m2Dia=rs.reduce((s,r)=>s+(+r.area_total||+r.area||0),0);
     const mlTipo=_mlPorTipo(rs);
@@ -6604,13 +6733,22 @@ function renderList() {
     const horasTxt = minDia>0 ? `⏱️ Horas trabajadas: ${(minDia/60).toFixed(2)} hrs` : '';
     const espTxt = rd.espProm>0 ? `Esp. prom ${rd.espProm.toFixed(2)}cm` : '';
     const rendEmulTxt = rd.rendTxt ? `· 🛢️ ${rd.rendTxt}` : '';
-    html+=`<div class="dh"><div class="dl">${lb}</div><div class="dt">${tt.toFixed(2)} ton · ${rs.length} vj · ${m2Dia.toFixed(1)} m² · ${_fmtMlPorTipo(mlTipo)}<br><span style="font-size:10px;color:var(--muted)">${cadPorCarrilTxt}</span><br><span style="font-size:10px;color:var(--muted)">${promTxt}${edTxt?' · '+edTxt:''}</span><br><span style="font-size:10px;color:var(--muted)">${espTxt} ${rendEmulTxt}${horasTxt?' · '+horasTxt:''}</span>${rsRegresos.length?`<br><span style="font-size:10px;color:#ef4444;font-weight:700">🔙 ${rsRegresos.length} camión(es) regresó(aron) cargado(s) hoy — no incluido en estos totales</span>`:''}</div></div>`;
+    html+=`<div class="dh"><div class="dl">${lb}</div><div class="dt">${tt.toFixed(2)} ton · ${rs.length} vj · ${m2Dia.toFixed(1)} m² · ${_fmtMlPorTipo(mlTipo)}<br><span style="font-size:10px;color:var(--muted)">${cadPorCarrilTxt}</span><br><span style="font-size:10px;color:var(--muted)">${promTxt}${edTxt?' · '+edTxt:''}</span><br><span style="font-size:10px;color:var(--muted)">${espTxt} ${rendEmulTxt}${horasTxt?' · '+horasTxt:''}</span>${rsRegresos.length?`<br><span style="font-size:10px;color:#ef4444;font-weight:700">🔙 ${rsRegresos.length} camión(es) regresó(aron) cargado(s) hoy — no incluido en estos totales</span>`:''}${rsCancelados.length?`<br><span style="font-size:10px;color:#b8830f;font-weight:700">🅿️ ${rsCancelados.length} camión(es) cancelado(s)/espera hoy — no incluido en estos totales</span>`:''}</div></div>`;
     rsRegresos.forEach(r=>{
       html+=`<div class="rc" style="border-color:#7a2e2e;background:rgba(220,38,38,.06)">
-        <div class="rt"><div><div class="rp">🔙 ${r.placas}</div><div class="rw">${r.capturado_por||'—'}${r.regreso_folio?' · Folio '+r.regreso_folio:''}</div></div>
+        <div class="rt"><div><div class="rp">🔙 ${r.placas}</div><div class="rw">${r.capturado_por||'—'}${r.vale?' · V:'+r.vale:''}${r.remision?' · R:'+r.remision:''}</div></div>
         <div class="rb2" style="background:#7a2e2e;color:#fff">REGRESO</div></div>
         <div class="rg"><div class="rc2"><div class="rl">Ton (no colocado)</div><div class="rv">${(+r.regreso_ton||0).toFixed(2)}</div></div></div>
-        ${r.regreso_obs?`<div class="obs-tag">📝 ${r.regreso_obs}</div>`:''}
+        ${(r.kde!=null||r.ka!=null)?`<div class="rk">km ${r.kde!=null?fmtCad(r.kde):'—'} → ${r.ka!=null?fmtCad(r.ka):'—'}</div>`:''}
+        ${r.observaciones?`<div class="obs-tag">📝 ${r.observaciones}</div>`:''}
+      </div>`;
+    });
+    rsCancelados.forEach(r=>{
+      html+=`<div class="rc" style="border-color:#7a5a2e;background:rgba(180,131,15,.08)">
+        <div class="rt"><div><div class="rp">🅿️ ${r.placas}</div><div class="rw">${r.capturado_por||'—'}${r.can_hora_ini?' · '+r.can_hora_ini+'→'+(r.can_hora_fin||'—'):''}</div></div>
+        <div class="rb2" style="background:${r.can_pago_estancia?'#ef4444':'#7a5a2e'};color:#fff">${r.can_pago_estancia?'ESTANCIA':'CANCELADO'}</div></div>
+        <div class="rg"><div class="rc2"><div class="rl">Horas de espera</div><div class="rv">${r.can_horas!=null?r.can_horas:'—'}</div></div></div>
+        ${r.observaciones?`<div class="obs-tag">📝 ${r.observaciones}</div>`:''}
       </div>`;
     });
     rs.forEach(r=>{
@@ -7013,10 +7151,12 @@ const REP_COLS=[
   {k:'espreal',t:'Esp.real(cm)',d:2},{k:'m3fav',t:'m³ favor',d:3},{k:'gp',t:'Result.'},
   {k:'tprod',t:'Temp.prod',d:0},{k:'ttend',t:'Temp.tend',d:0},
   {k:'hcap',t:'Hora captura'},{k:'hini',t:'Inicia tendido'},{k:'hfin',t:'Termina tendido'},{k:'dur',t:'Min descarga',d:1},
-  {k:'vale',t:'№ Vale'},{k:'remision',t:'№ Remisión'},{k:'capturado',t:'Capturó'},{k:'obs',t:'Observac.'}
+  {k:'vale',t:'№ Vale'},{k:'remision',t:'№ Remisión'},{k:'capturado',t:'Capturó'},{k:'obs',t:'Observac.'},
+  {k:'canhoras',t:'Hrs espera'},{k:'canpago',t:'Pago estancia'}
 ];
 const REP_DEFAULT=['fecha','concepto','carril','dekm','akm','ml','ancho','esp','area','vol','ton'];
 let _repDias=null; // null=todos · Set de fechas
+let _repSoloRegresos=false; // true = el preset "Camiones regresados/cancelados" está activo
 function _repColsArr(){
   let s; try{ s=JSON.parse(localStorage.getItem('t039_rep_cols')||'null'); }catch(e){ s=null; }
   if(!Array.isArray(s)||!s.length) s=REP_DEFAULT.slice();
@@ -7039,9 +7179,11 @@ window.repMoveCol=function(k,dir){
 };
 window.repColsPreset=function(p){
   let s;
+  _repSoloRegresos = (p==='regresos');
   if(p==='generador') s=['fecha','concepto','carril','sentido','dekm','akm','ml','ancho','esp','area','vol'];
-  else if(p==='pago') s=['fecha','viaje','placas','concepto','ton','vale','remision'];
+  else if(p==='pago') s=['fecha','viaje','placas','concepto','dekm','akm','ton','vale','remision'];
   else if(p==='volumen') s=['fecha','concepto','dekm','akm','ml','ancho','esp','vol','ton','volreal'];
+  else if(p==='regresos') s=['fecha','placas','ton','vale','remision','dekm','akm','canhoras','canpago','obs'];
   else if(p==='todo') s=REP_COLS.map(c=>c.k);
   else s=REP_DEFAULT.slice();
   localStorage.setItem('t039_rep_cols',JSON.stringify(s)); renderReporte();
@@ -7062,10 +7204,24 @@ window.repTodos=function(){
 function _repRows(){
   const fechas=[...new Set(records.map(r=>r.fecha).filter(Boolean))];
   const sel=(_repDias instanceof Set)?_repDias:new Set(fechas);
-  const rs=records.filter(r=>sel.has(r.fecha)).sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||'')||(a.num_viaje_dia||0)-(b.num_viaje_dia||0));
+  let rs=records.filter(r=>sel.has(r.fecha)).sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||'')||(a.num_viaje_dia||0)-(b.num_viaje_dia||0));
+  // Preset "Camiones regresados/cancelados": solo esos, nada de tendido normal mezclado en la tabla.
+  if(_repSoloRegresos) rs=rs.filter(r=>r.tipo==='regreso'||r.tipo==='cancelado');
+  else rs=rs.filter(r=>r.tipo!=='regreso'&&r.tipo!=='cancelado'); // el resto de presets nunca los mezcla (no tienen concepto real)
   const rows=[];
-  rs.forEach(v=>_conceptosDe(v).forEach(c=>{
-    const ml=+(+c.longitud||0), aw=+(+c.ancho||0), esp=+(c.esp_teorico||0), ton=+(+c.ton||0);
+  rs.forEach(v=>{
+    if(v.tipo==='cancelado'){
+      rows.push({ fecha:v.fecha||'', obra:v.obra||'039', viaje:'', placas:v.placas||'',
+        camion:'', material:'', pg:'', mezcla:'', concepto:'CANCELADO', carril:'', sentido:'',
+        dekm:null, akm:null, ml:0, ancho:0, esp:0, area:0, vol:0, volreal:0, ton:0, espreal:0, m3fav:0, gp:'',
+        tprod:'', ttend:'', hcap:'', hini:v.can_hora_ini||'', hfin:v.can_hora_fin||'', dur:'',
+        vale:'', remision:'', capturado:v.capturado_por||'', obs:v.observaciones||'',
+        canhoras:v.can_horas!=null?v.can_horas:'', canpago:v.can_pago_estancia?'SÍ':'NO' });
+      return;
+    }
+    _conceptosDe(v).forEach(c=>{
+    const ml=+(+c.longitud||0), aw=+(+c.ancho||0), esp=+(c.esp_teorico||0);
+    const ton=v.tipo==='regreso' ? (+v.regreso_ton||0) : +(+c.ton||0);
     const area=c.area!=null?+c.area:+(ml*aw);
     const vol=c.volumen!=null?+c.volumen:+(area*esp/100);
     const espreal=area>0?ton/(area*DEN)*100:0;
@@ -7073,13 +7229,15 @@ function _repRows(){
     const mf=(ton&&area&&esp)?(((esp/100)-(ton/(area*DEN)))*area):0;
     rows.push({ fecha:v.fecha||'', obra:v.obra||'039', viaje:v.num_viaje_dia||'', placas:v.placas||'',
       camion:v.tipo_camion||'', material:v.material||'', pg:v.pg||'', mezcla:v.tipo_mezcla||'',
-      concepto:conceptoCanon(c.id, c.label||'', (c.kde!=null?c.kde:v.kde)), carril:c.carril||v.carril||'', sentido:(c.sentido||v.sentido||'sube'),
-      dekm:c.kde, akm:c.ka, ml, ancho:aw, esp, area, vol, volreal, ton, espreal, m3fav:mf, gp:(mf>=0?'GANANCIA':'PERDIDA'),
+      concepto:v.tipo==='regreso'?'REGRESO':conceptoCanon(c.id, c.label||'', (c.kde!=null?c.kde:v.kde)), carril:c.carril||v.carril||'', sentido:(c.sentido||v.sentido||'sube'),
+      dekm:c.kde!=null?c.kde:v.kde, akm:c.ka!=null?c.ka:v.ka, ml, ancho:aw, esp, area, vol, volreal, ton, espreal, m3fav:mf, gp:(mf>=0?'GANANCIA':'PERDIDA'),
       tprod:v.temp_produccion, ttend:v.temp_tendido,
       hcap:v.hora_captura||'', hini:v.hora_inicio_tendido||'', hfin:v.hora_fin_tendido||'',
       dur:(v.duracion_descarga_min!=null&&v.duracion_descarga_min!=='')?+v.duracion_descarga_min:'',
-      vale:v.vale||'', remision:v.remision||'', capturado:v.capturado_por||'', obs:v.observaciones||'' });
-  }));
+      vale:v.vale||'', remision:v.remision||'', capturado:v.capturado_por||'', obs:v.observaciones||'',
+      canhoras:'', canpago:'' });
+    });
+  });
   return rows;
 }
 function _repGrafVisible(){ try{ return localStorage.getItem('t039_rep_graf')!=='0'; }catch(e){ return true; } }
@@ -7268,6 +7426,7 @@ function renderReporte() {
           <button onclick="repColsPreset('volumen')" style="${cb};font-size:11px;padding:3px 9px;background:var(--bg)">Volumen</button>
           <button onclick="repColsPreset('todo')" style="${cb};font-size:11px;padding:3px 9px;background:var(--bg)">Todas</button>
           <button onclick="repColsPreset('')" style="${cb};font-size:11px;padding:3px 9px;background:var(--bg)">Reset</button>
+          <button onclick="repColsPreset('regresos')" style="${cb};font-size:11px;padding:3px 9px;background:${_repSoloRegresos?'#ef4444':'var(--bg)'};color:${_repSoloRegresos?'#fff':'#ef4444'};border-color:#ef4444">🔙 Camiones regresados/cancelados</button>
           <button onclick="reporteTiemposCamion()" style="${cb};font-size:11px;padding:3px 9px;background:var(--bg);border-color:#3b82f6;color:#3b82f6">⏱️ Tiempos por camión</button>
         </div>
         <div style="font-size:10px;color:var(--muted);margin:2px 0 3px">En el reporte · ordena con ◀ ▶ · quita con ✕:</div>
@@ -7453,6 +7612,7 @@ function dl(content, filename) {
 // ningún viaje ni dato guardado, solo regresa esta vista a su estado por default.
 window.limpiarFiltrosReporte=function(){
   _repDias=null;
+  _repSoloRegresos=false;
   localStorage.setItem('t039_rep_cols', JSON.stringify(REP_DEFAULT.slice()));
   try{ localStorage.setItem('t039_rep_unidad','ton'); }catch(e){}
   toast('Filtros del reporte reiniciados — tus datos siguen igual','ok');
