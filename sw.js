@@ -1,11 +1,26 @@
-// TENDIDO 039 · Service Worker · v5 · network-first CON LÍMITE DE TIEMPO en HTML,
-// con respaldo en caché para no quedarse pegado cuando la señal está lenta (no caída, solo lenta).
-// v5: sube la versión del caché para forzar limpieza del HTML viejo en dispositivos ya instalados.
-const CACHE = 'tendido039-v5';
+// TENDIDO 039 · Service Worker · v6 · PRECARGA en install (para que quede lista sin internet
+// desde el momento en que se instala, no hasta la primera apertura exitosa) + network-first
+// CON LÍMITE DE TIEMPO en HTML, con respaldo en caché para no quedarse pegado con señal lenta.
+const CACHE = 'tendido039-v6';
 const HTML_TIMEOUT_MS = 4000; // si la red no responde en 4s, usa la última copia guardada
+// Archivos esenciales para poder abrir la app sin internet — se descargan de una vez al instalar.
+const PRECACHE_URLS = [
+  './TENDIDO_039_APP.html',
+  './REPORTE_EJECUTIVO_039.html'
+];
 
 self.addEventListener('install', e => {
-  self.skipWaiting();
+  e.waitUntil(
+    caches.open(CACHE)
+      .then(cache => Promise.all(
+        PRECACHE_URLS.map(url =>
+          fetch(url, { cache: 'no-store' })
+            .then(res => { if (res && res.ok) return cache.put(url, res); })
+            .catch(() => {}) // si alguno falla (sin señal al instalar), no truena el resto
+        )
+      ))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', e => {
