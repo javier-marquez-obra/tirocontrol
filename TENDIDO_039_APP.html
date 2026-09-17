@@ -3019,10 +3019,48 @@ window.cerorRegresosTon=async function(){
   try{
     await Promise.all(ids.map(id=>updateDoc(doc(db,'viajes',id),{regreso_ton:0})));
     toast('✓ Peso en 0 en '+ids.length+' registro(s)','ok');
-    _regSel.clear(); _renderRegresosLista();
+    _regSel.clear();
+    // Se llama desde las dos pantallas (Captura y Viajes), así que se repintan ambas.
+    _renderRegresosLista(); try{ renderList(); }catch(e){}
   }catch(e){ toast('Error: '+e.message,'err'); }
 };
-function _renderRegresosLista(){
+// Se expone en window porque el selector "Solo hoy / Todos" la llama desde un onchange del HTML,
+// y dentro de un <script type="module"> nada es global por default: sin esto el selector no hacía
+// absolutamente nada y la lista se quedaba siempre mostrando solo el día actual.
+// ── Corregir fechas de regresos DESDE LA PESTAÑA VIAJES ──
+// Cuando se capturan varios regresos de corrido (o sin señal) caen todos en la misma fecha. Aquí
+// se reparten al día que de verdad les toca. Es seguro: un regreso nunca entra a los totales de
+// ton/m²/m³, así que moverlo de fecha no cambia el volumen reportado de ningún día.
+let _diaCorrigiendo=null;
+window.toggleCorregirRegresos=function(dia){
+  _diaCorrigiendo = (_diaCorrigiendo===dia) ? null : dia;
+  _regSel.clear();
+  renderList();
+};
+window.toggleRegSelViajes=function(id){
+  if(_regSel.has(id)) _regSel.delete(id); else _regSel.add(id);
+  renderList();
+};
+window.selTodosRegresosDia=function(dia){
+  const ids=(records||[]).filter(r=>r.tipo==='regreso' && r.fecha===dia).map(r=>r._id);
+  const todos = ids.length && ids.every(id=>_regSel.has(id));
+  if(todos) ids.forEach(id=>_regSel.delete(id)); else ids.forEach(id=>_regSel.add(id));
+  renderList();
+};
+window.moverRegresosDia=async function(dia){
+  const f=(document.getElementById('f_mover_'+dia)||{}).value;
+  if(!f){ toast('Elige la fecha destino','err'); return; }
+  const ids=(records||[]).filter(r=>r.tipo==='regreso' && r.fecha===dia && _regSel.has(r._id)).map(r=>r._id);
+  if(!ids.length){ toast('No has seleccionado ninguno','err'); return; }
+  if(!confirm('¿Mover '+ids.length+' regreso(s) del '+dia+' al '+f+'?')) return;
+  try{
+    await Promise.all(ids.map(id=>updateDoc(doc(db,'viajes',id),{fecha:f})));
+    toast('✓ '+ids.length+' regreso(s) movido(s) al '+f,'ok');
+    _regSel.clear(); renderList();
+  }catch(e){ toast('Error: '+e.message,'err'); }
+};
+
+window._renderRegresosLista=function(){
   const el=document.getElementById('regresoLista'); if(!el) return;
   const soloHoy=(document.getElementById('f_reg_lista_dias')||{}).value!=='todos';
   const lista=_regresosVisibles();
@@ -6793,10 +6831,35 @@ function renderList() {
     const horasTxt = minDia>0 ? `⏱️ Horas trabajadas: ${(minDia/60).toFixed(2)} hrs` : '';
     const espTxt = rd.espProm>0 ? `Esp. prom ${rd.espProm.toFixed(2)}cm` : '';
     const rendEmulTxt = rd.rendTxt ? `· 🛢️ ${rd.rendTxt}` : '';
-    html+=`<div class="dh"><div class="dl">${lb}</div><div class="dt">${tt.toFixed(2)} ton · ${rs.length} vj · ${m2Dia.toFixed(1)} m² · ${_fmtMlPorTipo(mlTipo)}<br><span style="font-size:10px;color:var(--muted)">${cadPorCarrilTxt}</span><br><span style="font-size:10px;color:var(--muted)">${promTxt}${edTxt?' · '+edTxt:''}</span><br><span style="font-size:10px;color:var(--muted)">${espTxt} ${rendEmulTxt}${horasTxt?' · '+horasTxt:''}</span>${rsRegresos.length?`<br><span style="font-size:10px;color:#ef4444;font-weight:700">🔙 ${rsRegresos.length} camión(es) regresó(aron) cargado(s) hoy — no incluido en estos totales</span>`:''}${rsCancelados.length?`<br><span style="font-size:10px;color:#b8830f;font-weight:700">🅿️ ${rsCancelados.length} camión(es) cancelado(s)/espera hoy — no incluido en estos totales</span>`:''}</div></div>`;
+    html+=`<div class="dh"><div class="dl">${lb}</div><div class="dt">${tt.toFixed(2)} ton · ${rs.length} vj · ${m2Dia.toFixed(1)} m² · ${_fmtMlPorTipo(mlTipo)}<br><span style="font-size:10px;color:var(--muted)">${cadPorCarrilTxt}</span><br><span style="font-size:10px;color:var(--muted)">${promTxt}${edTxt?' · '+edTxt:''}</span><br><span style="font-size:10px;color:var(--muted)">${espTxt} ${rendEmulTxt}${horasTxt?' · '+horasTxt:''}</span>${rsRegresos.length?`<br><span onclick="toggleCorregirRegresos('${date}')" style="font-size:10px;color:#ef4444;font-weight:700;cursor:pointer;text-decoration:underline">🔙 ${rsRegresos.length} camión(es) regresó(aron) cargado(s) hoy — no incluido en estos totales · ${_diaCorrigiendo===date?'cerrar':'CORREGIR FECHAS'}</span>`:''}${rsCancelados.length?`<br><span style="font-size:10px;color:#b8830f;font-weight:700">🅿️ ${rsCancelados.length} camión(es) cancelado(s)/espera hoy — no incluido en estos totales</span>`:''}</div></div>`;
+    // Barra de corrección para los regresos de ESTE día: se abre desde la línea roja de arriba.
+    // Vive aquí, en Viajes, porque es donde se ve el amontonamiento y donde se nota qué día
+    // le toca a cada camión — no escondida en el formulario de captura.
+    if(_diaCorrigiendo===date && rsRegresos.length){
+      const nSel=rsRegresos.filter(r=>_regSel.has(r._id)).length;
+      html+=`<div style="border:1px solid #7a2e2e;background:rgba(220,38,38,.06);border-radius:10px;padding:10px;margin:6px 0">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+            <input type="checkbox" ${nSel===rsRegresos.length?'checked':''} onchange="selTodosRegresosDia('${date}')" style="width:18px;height:18px">
+            Seleccionar los ${rsRegresos.length}
+          </label>
+          <span style="margin-left:auto;font-size:12px;font-weight:700;color:${nSel?'var(--gold)':'var(--muted)'}">${nSel} seleccionado(s)</span>
+        </div>
+        ${nSel?`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px">
+            <input type="date" id="f_mover_${date}" style="flex:1;min-width:140px;background:var(--bg);border:1px solid var(--bord);border-radius:6px;padding:8px;color:var(--txt);font-size:13px">
+            <button onclick="moverRegresosDia('${date}')" style="background:rgba(212,160,23,.15);border:1px solid var(--gold);color:var(--gold);border-radius:6px;padding:8px 12px;font-size:13px;font-weight:700;cursor:pointer">📅 Mover</button>
+          </div>
+          <button onclick="cerorRegresosTon()" style="width:100%;margin-top:6px;background:none;border:1px solid var(--bord);color:var(--muted);border-radius:6px;padding:7px;font-size:12px;cursor:pointer">⚖️ Poner peso en 0 a los ${nSel} seleccionado(s)</button>`
+         :'<div style="font-size:11px;color:var(--muted);margin-top:6px">Palomea los camiones que sí son de otro día y elige a qué fecha mandarlos.</div>'}
+      </div>`;
+    }
     rsRegresos.forEach(r=>{
-      html+=`<div class="rc" style="border-color:#7a2e2e;background:rgba(220,38,38,.06)">
-        <div class="rt"><div><div class="rp">🔙 ${r.placas}</div><div class="rw">${r.capturado_por||'—'}${r.vale?' · V:'+r.vale:''}${r.remision?' · R:'+r.remision:''}</div></div>
+      const enModo=_diaCorrigiendo===date, sel=_regSel.has(r._id);
+      html+=`<div class="rc" style="border-color:#7a2e2e;background:${sel?'rgba(212,160,23,.14)':'rgba(220,38,38,.06)'}">
+        <div class="rt"><div style="display:flex;align-items:center;gap:8px">
+          ${enModo?`<input type="checkbox" ${sel?'checked':''} onclick="toggleRegSelViajes('${r._id}')" style="width:20px;height:20px;flex:0 0 auto">`:''}
+          <div><div class="rp">🔙 ${r.placas}</div><div class="rw">${r.capturado_por||'—'}${r.vale?' · V:'+r.vale:''}${r.remision?' · R:'+r.remision:''}</div></div>
+        </div>
         <div class="rb2" style="background:#7a2e2e;color:#fff">REGRESO</div></div>
         ${(+r.regreso_ton||0)>0?`<div class="rg"><div class="rc2"><div class="rl">Ton (no colocado)</div><div class="rv">${(+r.regreso_ton).toFixed(2)}</div></div></div>`:''}
         ${(r.kde!=null||r.ka!=null)?`<div class="rk">km ${r.kde!=null?fmtCad(r.kde):'—'} → ${r.ka!=null?fmtCad(r.ka):'—'}</div>`:''}
