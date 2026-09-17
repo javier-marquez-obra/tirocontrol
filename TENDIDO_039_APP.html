@@ -679,7 +679,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
           <div class="field"><label>Placas</label><input type="text" id="f_reg_placas" placeholder="ABC1234" style="text-transform:uppercase"></div>
           <div class="field"><label>№ Vale</label><input type="text" id="f_reg_vale" placeholder="V-0001"></div>
           <div class="field"><label>№ Remisión</label><input type="text" id="f_reg_remision" placeholder="R-0001"></div>
-          <div class="field"><label>Peso (ton)</label><input type="number" id="f_reg_ton" step="0.01" inputmode="decimal" placeholder="22.50"></div>
+          <div class="field"><label>Peso (ton) <span style="color:var(--muted);font-weight:400">— opcional</span></label><input type="number" id="f_reg_ton" step="0.01" inputmode="decimal" placeholder="Déjalo vacío si no pesó"></div>
           <div class="field"><label>De KM (si ya iba hacia un tramo)</label><input type="text" id="f_reg_kde" placeholder="46+200"></div>
           <div class="field"><label>A KM (opcional)</label><input type="text" id="f_reg_ka" placeholder="46+800"></div>
           <div class="field ff"><label>Observación</label><input type="text" id="f_reg_obs" placeholder="Motivo del regreso"></div>
@@ -2970,9 +2970,11 @@ window.guardarCamionRegreso=async function(){
   const kaTxt=document.getElementById('f_reg_ka').value.trim();
   const obs=document.getElementById('f_reg_obs').value.trim();
   if(!placas){ toast('Captura las placas del camión','err'); return; }
-  if(isNaN(ton)||ton<=0){ toast('Captura el peso en toneladas','err'); return; }
+  // El peso es OPCIONAL: muchas vueltas en falso no alcanzan a pesarse, y obligarlo llevaba a
+  // capturar toneladas inventadas (1.00) que después ensucian la lista. Sin peso se guarda en 0:
+  // lo que importa del registro es que el camión se regresó, con qué placas y por qué.
   const rec={ obra:obraActiva, fecha, placas, tipo:'regreso',
-    vale, remision, regreso_ton:+ton.toFixed(2), observaciones:obs,
+    vale, remision, regreso_ton:(isNaN(ton)||ton<0)?0:+ton.toFixed(2), observaciones:obs,
     kde:kdeTxt?(isNaN(parseCad(kdeTxt))?null:parseCad(kdeTxt)):null, ka:kaTxt?(isNaN(parseCad(kaTxt))?null:parseCad(kaTxt)):null,
     capturado_por:session.nombre, ts:Date.now() };
   try{
@@ -2982,15 +2984,73 @@ window.guardarCamionRegreso=async function(){
     _renderRegresosLista();
   }catch(e){ toast('Error: '+e.message,'err'); }
 };
+// Selección múltiple de regresos. Existe porque al capturar en bloque (o sin señal) los regresos
+// caen todos en la misma fecha, y corregirlos de uno en uno con decenas de registros no es opción.
+let _regSel=new Set();
+window.toggleRegSel=function(id){ if(_regSel.has(id)) _regSel.delete(id); else _regSel.add(id); _renderRegresosLista(); };
+window.toggleRegSelTodos=function(){
+  const vis=_regresosVisibles().map(r=>r._id);
+  const todosPuestos=vis.length && vis.every(id=>_regSel.has(id));
+  if(todosPuestos) vis.forEach(id=>_regSel.delete(id)); else vis.forEach(id=>_regSel.add(id));
+  _renderRegresosLista();
+};
+function _regresosVisibles(){
+  const soloHoy=(document.getElementById('f_reg_lista_dias')||{}).value!=='todos';
+  const hoy=fechaJornada();
+  return (recordsAll||[]).filter(r=>r.tipo==='regreso' && r.obra===obraActiva && (!soloHoy||r.fecha===hoy))
+    .sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')||(b.ts||0)-(a.ts||0));
+}
+// Mueve los seleccionados al día que de verdad ocurrieron. Es seguro para los reportes: un regreso
+// nunca entra a los totales de m²/m³/ton, así que cambiarle la fecha no mueve volumen de ningún día.
+window.moverRegresosFecha=async function(){
+  const f=(document.getElementById('f_reg_mover_fecha')||{}).value;
+  if(!f){ toast('Elige la fecha destino','err'); return; }
+  const ids=[..._regSel]; if(!ids.length){ toast('No has seleccionado ninguno','err'); return; }
+  if(!confirm('Mover '+ids.length+' regreso(s) al '+f+'?')) return;
+  try{
+    await Promise.all(ids.map(id=>updateDoc(doc(db,'viajes',id),{fecha:f})));
+    toast('✓ '+ids.length+' regreso(s) movido(s) al '+f,'ok');
+    _regSel.clear(); _renderRegresosLista();
+  }catch(e){ toast('Error: '+e.message,'err'); }
+};
+window.cerorRegresosTon=async function(){
+  const ids=[..._regSel]; if(!ids.length){ toast('No has seleccionado ninguno','err'); return; }
+  if(!confirm('Poner el peso en 0 a '+ids.length+' regreso(s)? Sirve para limpiar toneladas que se capturaron solo por rellenar.')) return;
+  try{
+    await Promise.all(ids.map(id=>updateDoc(doc(db,'viajes',id),{regreso_ton:0})));
+    toast('✓ Peso en 0 en '+ids.length+' registro(s)','ok');
+    _regSel.clear(); _renderRegresosLista();
+  }catch(e){ toast('Error: '+e.message,'err'); }
+};
 function _renderRegresosLista(){
   const el=document.getElementById('regresoLista'); if(!el) return;
   const soloHoy=(document.getElementById('f_reg_lista_dias')||{}).value!=='todos';
-  const hoy=fechaJornada();
-  const lista=(recordsAll||[]).filter(r=>r.tipo==='regreso' && r.obra===obraActiva && (!soloHoy||r.fecha===hoy)).sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')||(b.ts||0)-(a.ts||0));
-  if(!lista.length){ el.innerHTML='<div style="color:var(--muted);font-size:11px">Sin regresos capturados'+(soloHoy?' hoy':'')+'.</div>'; return; }
-  el.innerHTML=lista.map(r=>`<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--bord)">
-    <span><b>${r.fecha}</b> · ${r.placas} ${r.vale?'· V:'+r.vale:''}${r.remision?' · R:'+r.remision:''} · <b>${r.regreso_ton} ton</b>${r.observaciones?' · '+r.observaciones:''}</span>
-    <button onclick="eliminarCamionRegreso('${r._id}')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:12px">✕</button>
+  const lista=_regresosVisibles();
+  if(!lista.length){ _regSel.clear(); el.innerHTML='<div style="color:var(--muted);font-size:11px">Sin regresos capturados'+(soloHoy?' hoy':'')+'.</div>'; return; }
+  // Solo cuentan los seleccionados que están a la vista, para no mover sin querer registros
+  // que quedaron fuera del filtro actual.
+  const visIds=lista.map(r=>r._id);
+  [..._regSel].forEach(id=>{ if(!visIds.includes(id)) _regSel.delete(id); });
+  const nSel=_regSel.size;
+  const todosPuestos=visIds.length && visIds.every(id=>_regSel.has(id));
+  const barra=`<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--bord)">
+    <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);cursor:pointer">
+      <input type="checkbox" ${todosPuestos?'checked':''} onchange="toggleRegSelTodos()" style="width:16px;height:16px">
+      Seleccionar los ${lista.length} de la lista
+    </label>
+    ${nSel?`<span style="margin-left:auto;font-size:11px;font-weight:700;color:var(--gold)">${nSel} seleccionado(s)</span>`:''}
+  </div>
+  ${nSel?`<div style="background:rgba(212,160,23,.07);border:1px solid var(--bord);border-radius:8px;padding:8px;margin:6px 0">
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+      <input type="date" id="f_reg_mover_fecha" style="flex:1;min-width:130px;background:var(--bg);border:1px solid var(--bord);border-radius:6px;padding:6px;color:var(--txt);font-size:12px">
+      <button onclick="moverRegresosFecha()" style="background:rgba(212,160,23,.15);border:1px solid var(--gold);color:var(--gold);border-radius:6px;padding:6px 10px;font-size:12px;font-weight:700;cursor:pointer">📅 Mover a esta fecha</button>
+    </div>
+    <button onclick="cerorRegresosTon()" style="width:100%;margin-top:6px;background:none;border:1px solid var(--bord);color:var(--muted);border-radius:6px;padding:6px;font-size:11px;cursor:pointer">⚖️ Poner peso en 0</button>
+  </div>`:''}`;
+  el.innerHTML=barra+lista.map(r=>`<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--bord);background:${_regSel.has(r._id)?'rgba(212,160,23,.07)':'transparent'}">
+    <input type="checkbox" ${_regSel.has(r._id)?'checked':''} onchange="toggleRegSel('${r._id}')" style="width:16px;height:16px;flex:0 0 auto">
+    <span style="flex:1;min-width:0"><b>${r.fecha}</b> · ${r.placas} ${r.vale?'· V:'+r.vale:''}${r.remision?' · R:'+r.remision:''}${(+r.regreso_ton>0)?' · <b>'+r.regreso_ton+' ton</b>':''}${r.observaciones?' · '+r.observaciones:''}</span>
+    <button onclick="eliminarCamionRegreso('${r._id}')" style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:12px;flex:0 0 auto">✕</button>
   </div>`).join('');
 }
 window.eliminarCamionRegreso=async function(id){
@@ -4158,7 +4218,7 @@ function renderTablaTiro(){
       ${sc('ttend')?`<td>${primera?ttTxt:''}</td>`:''}
       ${sc('gan')?`<td class="G">${gan?('+'+gan.toFixed(2)):'—'}</td>`:''}
       ${sc('per')?`<td class="P">${per?('−'+per.toFixed(2)):'—'}</td>`:''}
-      ${sc('regreso')?`<td style="color:#ef4444;font-weight:700">${v.tipo==='regreso'?((+v.regreso_ton||0).toFixed(2)+' ton'+(v.vale?' · V:'+v.vale:'')+(v.remision?' · R:'+v.remision:'')+(v.kde!=null?' · '+fmtCad(v.kde):'')+(v.ka!=null?'→'+fmtCad(v.ka):'')+(v.observaciones?' · '+v.observaciones:'')):(v.tipo==='cancelado'?('🅿️ '+(v.can_horas||0)+' hrs espera'+(v.can_pago_estancia?' · ESTANCIA':'')+(v.observaciones?' · '+v.observaciones:'')):'—')}</td>`:''}
+      ${sc('regreso')?`<td style="color:#ef4444;font-weight:700">${v.tipo==='regreso'?(((+v.regreso_ton||0)>0?(+v.regreso_ton).toFixed(2)+' ton':'🔙 regresó')+(v.vale?' · V:'+v.vale:'')+(v.remision?' · R:'+v.remision:'')+(v.kde!=null?' · '+fmtCad(v.kde):'')+(v.ka!=null?'→'+fmtCad(v.ka):'')+(v.observaciones?' · '+v.observaciones:'')):(v.tipo==='cancelado'?('🅿️ '+(v.can_horas||0)+' hrs espera'+(v.can_pago_estancia?' · ESTANCIA':'')+(v.observaciones?' · '+v.observaciones:'')):'—')}</td>`:''}
       <td>${primera?`<button class="tiro-mod" onclick="modificarDesdeTiro('${v._id}')" ${editable?'':'disabled'} title="${editable?'Modificar este viaje':motivoBloqueo(v)}">${editable?'✏️ Modificar':'🔒'}</button>`:''}</td>
     </tr>`;
   }).join('');
@@ -6738,7 +6798,7 @@ function renderList() {
       html+=`<div class="rc" style="border-color:#7a2e2e;background:rgba(220,38,38,.06)">
         <div class="rt"><div><div class="rp">🔙 ${r.placas}</div><div class="rw">${r.capturado_por||'—'}${r.vale?' · V:'+r.vale:''}${r.remision?' · R:'+r.remision:''}</div></div>
         <div class="rb2" style="background:#7a2e2e;color:#fff">REGRESO</div></div>
-        <div class="rg"><div class="rc2"><div class="rl">Ton (no colocado)</div><div class="rv">${(+r.regreso_ton||0).toFixed(2)}</div></div></div>
+        ${(+r.regreso_ton||0)>0?`<div class="rg"><div class="rc2"><div class="rl">Ton (no colocado)</div><div class="rv">${(+r.regreso_ton).toFixed(2)}</div></div></div>`:''}
         ${(r.kde!=null||r.ka!=null)?`<div class="rk">km ${r.kde!=null?fmtCad(r.kde):'—'} → ${r.ka!=null?fmtCad(r.ka):'—'}</div>`:''}
         ${r.observaciones?`<div class="obs-tag">📝 ${r.observaciones}</div>`:''}
       </div>`;
