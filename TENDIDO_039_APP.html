@@ -3032,6 +3032,17 @@ window.cerorRegresosTon=async function(){
 // se reparten al día que de verdad les toca. Es seguro: un regreso nunca entra a los totales de
 // ton/m²/m³, así que moverlo de fecha no cambia el volumen reportado de ningún día.
 let _diaCorrigiendo=null;
+// Captura del folio (vale / remisión) directamente sobre el registro ya guardado. Los regresos
+// que se capturaron de corrido suelen quedar sin folio, y el folio de la remisión en papel es
+// justo lo que permite saber a qué día pertenece cada camión antes de moverlo.
+window.setFolioRegreso=async function(id, campo, valor){
+  const v=(valor||'').trim().toUpperCase();
+  try{
+    await updateDoc(doc(db,'viajes',id),{[campo]:v});
+    toast('✓ '+(campo==='vale'?'Vale':'Remisión')+' guardado'+(v?': '+v:' (vacío)'),'ok');
+    renderList();
+  }catch(e){ toast('Error: '+e.message,'err'); }
+};
 window.toggleCorregirRegresos=function(dia){
   _diaCorrigiendo = (_diaCorrigiendo===dia) ? null : dia;
   _regSel.clear();
@@ -6845,6 +6856,9 @@ function renderList() {
           </label>
           <span style="margin-left:auto;font-size:12px;font-weight:700;color:${nSel?'var(--gold)':'var(--muted)'}">${nSel} seleccionado(s)</span>
         </div>
+        ${(()=>{const sf=rsRegresos.filter(r=>!r.vale&&!r.remision).length;
+          return sf?`<div style="font-size:11px;color:#ef4444;margin-top:6px">⚠️ ${sf} de ${rsRegresos.length} sin folio — captúralos abajo con tu remisión en mano para saber a qué día mandarlos.</div>`
+                   :`<div style="font-size:11px;color:#16a34a;margin-top:6px">✓ Los ${rsRegresos.length} ya tienen folio.</div>`;})()}
         ${nSel?`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px">
             <input type="date" id="f_mover_${date}" style="flex:1;min-width:140px;background:var(--bg);border:1px solid var(--bord);border-radius:6px;padding:8px;color:var(--txt);font-size:13px">
             <button onclick="moverRegresosDia('${date}')" style="background:rgba(212,160,23,.15);border:1px solid var(--gold);color:var(--gold);border-radius:6px;padding:8px 12px;font-size:13px;font-weight:700;cursor:pointer">📅 Mover</button>
@@ -6858,9 +6872,15 @@ function renderList() {
       html+=`<div class="rc" style="border-color:#7a2e2e;background:${sel?'rgba(212,160,23,.14)':'rgba(220,38,38,.06)'}">
         <div class="rt"><div style="display:flex;align-items:center;gap:8px">
           ${enModo?`<input type="checkbox" ${sel?'checked':''} onclick="toggleRegSelViajes('${r._id}')" style="width:20px;height:20px;flex:0 0 auto">`:''}
-          <div><div class="rp">🔙 ${r.placas}</div><div class="rw">${r.capturado_por||'—'}${r.vale?' · V:'+r.vale:''}${r.remision?' · R:'+r.remision:''}</div></div>
+          <div><div class="rp">🔙 ${r.placas}</div><div class="rw">${r.capturado_por||'—'}${(r.vale||r.remision)?` · <b style="color:var(--gold)">${r.vale?'V:'+r.vale:''}${(r.vale&&r.remision)?' · ':''}${r.remision?'R:'+r.remision:''}</b>`:' · <span style="color:#ef4444">sin folio</span>'}</div></div>
         </div>
         <div class="rb2" style="background:#7a2e2e;color:#fff">REGRESO</div></div>
+        ${enModo?`<div style="display:flex;gap:6px;margin-top:6px">
+          <div style="flex:1"><label style="font-size:9px;color:var(--muted);text-transform:uppercase">№ Vale</label>
+            <input value="${(r.vale||'').replace(/"/g,'&quot;')}" placeholder="V-0001" onchange="setFolioRegreso('${r._id}','vale',this.value)" style="width:100%;background:var(--bg);border:1px solid var(--bord);border-radius:6px;padding:7px;color:var(--txt);font-size:13px;font-family:monospace"></div>
+          <div style="flex:1"><label style="font-size:9px;color:var(--muted);text-transform:uppercase">№ Remisión</label>
+            <input value="${(r.remision||'').replace(/"/g,'&quot;')}" placeholder="R-0001" onchange="setFolioRegreso('${r._id}','remision',this.value)" style="width:100%;background:var(--bg);border:1px solid var(--bord);border-radius:6px;padding:7px;color:var(--txt);font-size:13px;font-family:monospace"></div>
+        </div>`:''}
         ${(+r.regreso_ton||0)>0?`<div class="rg"><div class="rc2"><div class="rl">Ton (no colocado)</div><div class="rv">${(+r.regreso_ton).toFixed(2)}</div></div></div>`:''}
         ${(r.kde!=null||r.ka!=null)?`<div class="rk">km ${r.kde!=null?fmtCad(r.kde):'—'} → ${r.ka!=null?fmtCad(r.ka):'—'}</div>`:''}
         ${r.observaciones?`<div class="obs-tag">📝 ${r.observaciones}</div>`:''}
