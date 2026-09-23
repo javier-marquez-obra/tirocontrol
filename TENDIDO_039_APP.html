@@ -693,6 +693,19 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
           </select>
         </div>
         <div id="regresoLista" style="margin-top:6px;font-size:12px"></div>
+
+        <div style="margin-top:14px;border-top:1px solid var(--bord);padding-top:10px">
+          <div style="font-size:11px;font-weight:700;color:var(--gold);margin-bottom:6px">📦 Carga rápida por día</div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:8px">Para recapturar varios camiones de un mismo día de corrido. <b>Una línea por camión</b>, con su folio:<br>
+            <code style="font-size:11px;color:var(--txt)">PLACAS, VALE, REMISIÓN, OBSERVACIÓN</code><br>
+            Remisión y observación son opcionales. Puedes separar con coma o con dos espacios. Ejemplo:<br>
+            <code style="font-size:11px;color:var(--txt)">KH4666A, V-0125<br>RT6486A, V-0126, R-8890, mezcla fría</code>
+          </div>
+          <input type="date" id="cargaRegFecha" style="width:100%;background:var(--bg);border:1px solid var(--bord);border-radius:6px;padding:8px;color:var(--txt);margin-bottom:6px">
+          <textarea id="cargaRegTxt" rows="6" oninput="previewCargaRegresos()" placeholder="KH4666A, V-0125&#10;RT6486A, V-0126&#10;NM1588C, V-0127" style="width:100%;background:var(--bg);border:1px solid var(--bord);border-radius:6px;padding:8px;color:var(--txt);font-family:monospace;font-size:13px"></textarea>
+          <div id="cargaRegPreview" style="margin:8px 0"></div>
+          <button onclick="guardarCargaRegresos()" style="width:100%;background:rgba(212,160,23,.15);border:1px solid var(--gold);color:var(--gold);border-radius:8px;padding:10px;font-size:13px;font-weight:700;cursor:pointer">📥 Cargar todos a esa fecha</button>
+        </div>
       </div>
     </div>
 
@@ -3035,6 +3048,100 @@ let _diaCorrigiendo=null;
 // Captura del folio (vale / remisión) directamente sobre el registro ya guardado. Los regresos
 // que se capturaron de corrido suelen quedar sin folio, y el folio de la remisión en papel es
 // justo lo que permite saber a qué día pertenece cada camión antes de moverlo.
+// Borra de un día los regresos que quedaron sin folio. Se pidió porque un regreso sin número de
+// vale/remisión no sirve para cobrarle al transportista ni para reclamar mezcla: no hay con qué
+// amarrarlo al papel. Conviene volverlos a cargar con folio en vez de arrastrarlos incompletos.
+// Saca los regresos de un día en el MISMO formato que acepta la carga rápida, para no perder los
+// folios ya capturados cuando se borra el día para recapturarlo repartido por fechas.
+window.copiarRegresosDia=function(dia){
+  const lista=(records||[]).filter(r=>r.tipo==='regreso' && r.fecha===dia)
+    .sort((a,b)=>(a.vale||'').localeCompare(b.vale||''));
+  if(!lista.length){ toast('No hay regresos en este día','err'); return; }
+  const txt=lista.map(r=>[r.placas||'', r.vale||'', r.remision||'', (r.observaciones||'').replace(/[,;\n]/g,' ')]
+    .join(', ').replace(/(,\s*)+$/,'')).join('\n');
+  const cont=document.getElementById('copiaReg_'+dia);
+  if(cont){
+    cont.style.display='';
+    cont.innerHTML=`<div style="font-size:10px;color:var(--muted);margin-bottom:4px">Cópialo y guárdalo antes de borrar. Después pégalo en la carga rápida y repártelo por día.</div>
+      <textarea readonly onclick="this.select()" rows="7" style="width:100%;background:var(--bg);border:1px solid var(--gold);border-radius:6px;padding:8px;color:var(--txt);font-family:monospace;font-size:12px">${txt.replace(/</g,'&lt;')}</textarea>`;
+    const ta=cont.querySelector('textarea'); if(ta){ ta.focus(); ta.select(); }
+  }
+  try{ navigator.clipboard.writeText(txt).then(()=>toast('✓ '+lista.length+' copiado(s) al portapapeles','ok'),
+    ()=>toast('Selecciona el texto y cópialo a mano','warn')); }
+  catch(e){ toast('Selecciona el texto y cópialo a mano','warn'); }
+};
+// Borra TODOS los regresos de un día (no solo los que no traen folio). Se usa cuando un día quedó
+// como cajón de sastre —todo se capturó ahí por falta de señal— y conviene recapturarlo repartido.
+window.borrarTodosRegresosDia=async function(dia){
+  const lista=(records||[]).filter(r=>r.tipo==='regreso' && r.fecha===dia);
+  if(!lista.length){ toast('No hay regresos en este día','err'); return; }
+  const conFolio=lista.filter(r=>r.vale||r.remision).length;
+  if(!confirm('¿Eliminar los '+lista.length+' regresos del '+dia+'?\n\n'+conFolio+' de ellos YA tienen folio capturado — si no los copiaste antes, ese trabajo se pierde.\n\nLos viajes normales de ese día NO se tocan.')) return;
+  if(!confirm('Última confirmación: se borran '+lista.length+' registro(s) de forma permanente.')) return;
+  try{
+    await Promise.all(lista.map(r=>deleteDoc(doc(db,'viajes',r._id))));
+    toast('✓ '+lista.length+' regreso(s) eliminado(s) del '+dia,'ok');
+    _regSel.clear(); _diaCorrigiendo=null; renderList();
+  }catch(e){ toast('Error: '+e.message,'err'); }
+};
+window.borrarRegresosSinFolio=async function(dia){
+  const lista=(records||[]).filter(r=>r.tipo==='regreso' && r.fecha===dia && !r.vale && !r.remision);
+  if(!lista.length){ toast('No hay regresos sin folio en este día','ok'); return; }
+  if(!confirm('¿Eliminar '+lista.length+' regreso(s) SIN FOLIO del '+dia+'?\n\nNo se puede deshacer. Los que sí tienen folio no se tocan.')) return;
+  if(!confirm('Confirma otra vez: se borran '+lista.length+' registro(s) de forma permanente.')) return;
+  try{
+    await Promise.all(lista.map(r=>deleteDoc(doc(db,'viajes',r._id))));
+    toast('✓ '+lista.length+' regreso(s) sin folio eliminado(s)','ok');
+    _regSel.clear(); renderList();
+  }catch(e){ toast('Error: '+e.message,'err'); }
+};
+
+// ── Carga rápida de regresos por día ──
+// Para recapturar de corrido varios camiones de un mismo día: una línea por camión, con su folio.
+// Acepta separadores por coma, punto y coma, tabulador o dos o más espacios, en este orden:
+//   PLACAS , VALE , REMISIÓN (opcional) , OBSERVACIÓN (opcional)
+function _parseLineasRegreso(txt){
+  return (txt||'').split('\n').map(l=>l.trim()).filter(Boolean).map((linea,i)=>{
+    // Sin filter(Boolean): un campo vacío en medio ("V-0131, , se regresó") es significativo —
+    // marca que no hay remisión, y si se colapsa la observación se recorre al campo equivocado.
+    const p=linea.split(/\s*[,;\t]\s*|\s{2,}/).map(x=>x.trim());
+    return { n:i+1, placas:normPlacas(p[0]||''), vale:(p[1]||'').toUpperCase(),
+             remision:(p[2]||'').toUpperCase(), obs:p.slice(3).filter(Boolean).join(' ')||'', crudo:linea };
+  });
+}
+window.previewCargaRegresos=function(){
+  const cont=document.getElementById('cargaRegPreview'); if(!cont) return;
+  const filas=_parseLineasRegreso((document.getElementById('cargaRegTxt')||{}).value);
+  if(!filas.length){ cont.innerHTML='<div style="font-size:11px;color:var(--muted)">Escribe una línea por camión para ver la vista previa.</div>'; return; }
+  const malas=filas.filter(f=>!f.placas||(!f.vale&&!f.remision));
+  cont.innerHTML=`<div style="font-size:11px;font-weight:700;color:var(--gold);margin-bottom:4px">${filas.length} camión(es) a cargar${malas.length?` · <span style="color:#ef4444">${malas.length} incompleto(s)</span>`:''}</div>`
+    + filas.map(f=>{
+        const mal=!f.placas||(!f.vale&&!f.remision);
+        return `<div style="font-size:11px;padding:3px 0;border-bottom:1px solid var(--bord);color:${mal?'#ef4444':'var(--txt)'}">
+          ${f.n}. <b>${f.placas||'(sin placas)'}</b> ${f.vale?'· V:'+f.vale:''}${f.remision?' · R:'+f.remision:''}${f.obs?' · '+f.obs:''}
+          ${mal?'<br><span style="font-size:10px">⚠️ falta placas o folio — esta línea no se va a cargar</span>':''}
+        </div>`;
+      }).join('');
+};
+window.guardarCargaRegresos=async function(){
+  const fecha=(document.getElementById('cargaRegFecha')||{}).value;
+  if(!fecha){ toast('Elige la fecha del día que vas a cargar','err'); return; }
+  const filas=_parseLineasRegreso((document.getElementById('cargaRegTxt')||{}).value);
+  const buenas=filas.filter(f=>f.placas&&(f.vale||f.remision));
+  const malas=filas.length-buenas.length;
+  if(!buenas.length){ toast('No hay ninguna línea completa (placas + folio)','err'); return; }
+  if(!confirm('Cargar '+buenas.length+' regreso(s) al '+fecha+'?'+(malas?'\n\n'+malas+' línea(s) incompleta(s) se van a omitir.':''))) return;
+  try{
+    await Promise.all(buenas.map(f=>addDoc(collection(db,'viajes'),{
+      obra:obraActiva, fecha, placas:f.placas, tipo:'regreso',
+      vale:f.vale, remision:f.remision, regreso_ton:0, observaciones:f.obs,
+      kde:null, ka:null, capturado_por:session.nombre, ts:Date.now()
+    })));
+    toast('✓ '+buenas.length+' regreso(s) cargado(s) al '+fecha,'ok');
+    const t=document.getElementById('cargaRegTxt'); if(t) t.value='';
+    previewCargaRegresos(); _renderRegresosLista(); try{ renderList(); }catch(e){}
+  }catch(e){ toast('Error: '+e.message,'err'); }
+};
 window.setFolioRegreso=async function(id, campo, valor){
   const v=(valor||'').trim().toUpperCase();
   try{
@@ -6857,8 +6964,12 @@ function renderList() {
           <span style="margin-left:auto;font-size:12px;font-weight:700;color:${nSel?'var(--gold)':'var(--muted)'}">${nSel} seleccionado(s)</span>
         </div>
         ${(()=>{const sf=rsRegresos.filter(r=>!r.vale&&!r.remision).length;
-          return sf?`<div style="font-size:11px;color:#ef4444;margin-top:6px">⚠️ ${sf} de ${rsRegresos.length} sin folio — captúralos abajo con tu remisión en mano para saber a qué día mandarlos.</div>`
-                   :`<div style="font-size:11px;color:#16a34a;margin-top:6px">✓ Los ${rsRegresos.length} ya tienen folio.</div>`;})()}
+          return `<div style="font-size:11px;color:${sf?'#ef4444':'#16a34a'};margin-top:6px">${sf?`⚠️ ${sf} de ${rsRegresos.length} sin folio.`:`✓ Los ${rsRegresos.length} ya tienen folio.`}</div>
+            <button onclick="copiarRegresosDia('${date}')" style="width:100%;margin-top:8px;background:rgba(212,160,23,.15);border:1px solid var(--gold);color:var(--gold);border-radius:6px;padding:9px;font-size:12px;font-weight:700;cursor:pointer">📋 1· Copiar los ${rsRegresos.length} con su folio (para recargarlos)</button>
+            <div id="copiaReg_${date}" style="display:none;margin-top:6px"></div>
+            ${sf?`<button onclick="borrarRegresosSinFolio('${date}')" style="width:100%;margin-top:6px;background:none;border:1px solid var(--bord);color:var(--muted);border-radius:6px;padding:8px;font-size:12px;cursor:pointer">🗑️ Eliminar solo los ${sf} sin folio</button>`:''}
+            <button onclick="borrarTodosRegresosDia('${date}')" style="width:100%;margin-top:6px;background:rgba(220,38,38,.12);border:1px solid #dc2626;color:#ef4444;border-radius:6px;padding:9px;font-size:12px;font-weight:700;cursor:pointer">🗑️ 2· Eliminar los ${rsRegresos.length} regresos de este día</button>
+            <div style="font-size:10px;color:var(--muted);margin-top:5px">Copia primero: al borrar se pierden los folios ya capturados. Luego recárgalos por día en 📋 Captura → «Carga rápida por día».</div>`;})()}
         ${nSel?`<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px">
             <input type="date" id="f_mover_${date}" style="flex:1;min-width:140px;background:var(--bg);border:1px solid var(--bord);border-radius:6px;padding:8px;color:var(--txt);font-size:13px">
             <button onclick="moverRegresosDia('${date}')" style="background:rgba(212,160,23,.15);border:1px solid var(--gold);color:var(--gold);border-radius:6px;padding:8px 12px;font-size:13px;font-weight:700;cursor:pointer">📅 Mover</button>
