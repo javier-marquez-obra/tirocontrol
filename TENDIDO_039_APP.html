@@ -89,7 +89,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 .cnt-badge{background:var(--gold);color:#000;font-family:var(--mono);font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px}
 /* TABS */
 .tabs{display:flex;background:var(--surf);border-bottom:1px solid var(--bord);flex-shrink:0;overflow-x:auto;gap:3px;padding:6px 6px 0}
-.tab{flex-shrink:0;padding:8px 12px;text-align:center;font-family:var(--sans);font-weight:700;font-size:11px;letter-spacing:.04em;color:var(--muted);cursor:pointer;white-space:nowrap;background:var(--surf);border:1px solid var(--bord);border-bottom:1px solid var(--bord);border-radius:8px 8px 0 0;margin-bottom:-1px;position:relative;transition:all .15s}
+.tab{flex-shrink:0;padding:13px 16px;min-height:44px;display:flex;align-items:center;justify-content:center;text-align:center;font-family:var(--sans);font-weight:700;font-size:12.5px;letter-spacing:.04em;color:var(--muted);cursor:pointer;white-space:nowrap;background:var(--surf);border:1px solid var(--bord);border-bottom:1px solid var(--bord);border-radius:8px 8px 0 0;margin-bottom:-1px;position:relative;transition:all .15s}
 .tab.active{color:var(--gold);background:var(--bg);border-color:var(--bord);border-bottom-color:var(--bg);z-index:2}
 .tab.locked{opacity:.35;pointer-events:none}
 #view-tiro.active{display:flex;flex-direction:column}
@@ -106,7 +106,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 .jlock.on{background:var(--gold);color:#000}
 .jhoy{flex:0 0 auto;padding:9px 12px;background:var(--bg);border:1px solid var(--bord);border-radius:6px;color:var(--txt);font-family:var(--sans);font-size:12px;font-weight:700;cursor:pointer;letter-spacing:.04em;white-space:nowrap}
 .jhoy:active{transform:scale(.96)}
-.field input,.field select,.field textarea{width:100%;background:var(--bg);border:1px solid var(--bord);border-radius:6px;padding:9px 10px;color:var(--txt);font-family:var(--mono);font-size:15px;font-weight:600;outline:none;transition:border-color .15s;-webkit-appearance:none;appearance:none}
+.field input,.field select,.field textarea{width:100%;background:var(--bg);border:1px solid var(--bord);border-radius:6px;padding:12px;min-height:44px;color:var(--txt);font-family:var(--mono);font-size:15px;font-weight:600;outline:none;transition:border-color .15s;-webkit-appearance:none;appearance:none}
 .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--gold)}
 .field input::placeholder,.field textarea::placeholder{color:var(--muted);font-weight:400;font-size:13px}
 .field select option{background:var(--card)}
@@ -219,7 +219,7 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 .dsb.open{display:block}
 /* EXPORT ROW */
 .er{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
-.be{padding:11px;background:var(--card);border:1px solid var(--bord);color:var(--txt);border-radius:8px;font-family:var(--sans);font-size:13px;font-weight:700;cursor:pointer;text-align:center}
+.be{padding:11px 14px;min-height:44px;background:var(--card);border:1px solid var(--bord);color:var(--txt);border-radius:8px;font-family:var(--sans);font-size:13px;font-weight:700;cursor:pointer;text-align:center}
 .be:active{background:var(--surf)}
 .be.danger{border-color:var(--red);color:var(--red)}
 .be.full{grid-column:1/-1}
