@@ -6566,10 +6566,11 @@ function renderConceptosContainer(){
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px">
         <div>
-          <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Ancho ini (m)</div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Ancho ini (m)${(cv.awHeredado!=null&&!_anchoDesbloqueado[i])?` <span onclick="desbloquearAncho(${i})" style="color:var(--gold);cursor:pointer;font-weight:700">🔒 heredado · abrir</span>`:''}</div>
           <input type="number" id="f_aw1_${i}" value="${cv.aw1||''}" placeholder="3.34" step="0.01" inputmode="decimal"
+            ${(cv.awHeredado!=null&&!_anchoDesbloqueado[i])?'readonly onclick="desbloquearAncho('+i+')"':''}
             oninput="conceptosViaje[${i}].aw1=parseFloat(this.value)||0;calcResumenViaje()"
-            style="width:100%;background:var(--bg);border:1px solid var(--bord);border-radius:6px;padding:6px;font-size:14px;font-weight:700;color:var(--txt)">
+            style="width:100%;background:${(cv.awHeredado!=null&&!_anchoDesbloqueado[i])?'var(--surf)':'var(--bg)'};border:1px solid ${(cv.awHeredado!=null&&!_anchoDesbloqueado[i])?'var(--gold)':'var(--bord)'};border-radius:6px;padding:6px;font-size:14px;font-weight:700;color:var(--txt)">
         </div>
         <div>
           <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Ancho fin (m)</div>
@@ -6619,10 +6620,11 @@ function renderConceptosContainer(){
         </div>
         <div id="traslape_warn_${i}" style="display:none;grid-column:1/-1;background:rgba(220,38,38,.12);border:1px solid #dc2626;border-radius:6px;padding:6px 8px;font-size:11px;color:#dc2626;font-weight:700"></div>
         <div>
-          <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Ancho ini (m)</div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Ancho ini (m)${(cv.awHeredado!=null&&!_anchoDesbloqueado[i])?` <span onclick="desbloquearAncho(${i})" style="color:var(--gold);cursor:pointer;font-weight:700">🔒 heredado · abrir</span>`:''}</div>
           <input type="number" id="f_aw1_${i}" value="${cv.aw1||''}" placeholder="3.34" step="0.01" inputmode="decimal"
+            ${(cv.awHeredado!=null&&!_anchoDesbloqueado[i])?'readonly onclick="desbloquearAncho('+i+')"':''}
             oninput="conceptosViaje[${i}].aw1=parseFloat(this.value)||0;calcResumenViaje()"
-            style="width:100%;background:var(--bg);border:1px solid var(--bord);border-radius:6px;padding:6px;font-size:14px;font-weight:700;color:var(--txt)">
+            style="width:100%;background:${(cv.awHeredado!=null&&!_anchoDesbloqueado[i])?'var(--surf)':'var(--bg)'};border:1px solid ${(cv.awHeredado!=null&&!_anchoDesbloqueado[i])?'var(--gold)':'var(--bord)'};border-radius:6px;padding:6px;font-size:14px;font-weight:700;color:var(--txt)">
         </div>
         <div>
           <div style="font-size:10px;color:var(--muted);margin-bottom:3px">Ancho fin (m)</div>
@@ -6691,6 +6693,9 @@ window.quitarConcepto=function(i){
 function initConceptosViaje(){
   const opciones=_conceptosDelTramoActivo();
   const def=_conceptoDefaultDe(opciones)||{id:'CARPETA3-O1'};
+  // Cada camión arranca de cero: el ancho vuelve a heredarse bloqueado del carril, aunque en el
+  // viaje anterior se haya abierto el candado a propósito.
+  _anchoDesbloqueado={};
   conceptosViaje=[{id:def.id,ton:0,kde:null,ka:null,ml:0,aw1:0,aw2:0,et:3,carril:'L. DER.'}];
   renderConceptosContainer();
 }
@@ -6826,6 +6831,17 @@ window.buscarCadenamientoCarril=function(i){
   if(typeof calcResumenViaje==='function') calcResumenViaje();
   toast('✓ Cadenamiento inicial confirmado: '+fmtCad(kaUlt)+(anchoUlt!=null?' · ancho '+(+anchoUlt).toFixed(2)+' m':''));
 };
+// Anchos heredados del carril anterior: vienen bloqueados para que el tendido siga con la misma
+// franja y nadie los mueva de pasada. Se pueden abrir a propósito cuando el carril de verdad
+// cambió de ancho — si no se pudiera, un cambio real de franja se capturaría con el ancho viejo
+// y el volumen saldría mal.
+let _anchoDesbloqueado={};
+window.desbloquearAncho=function(i){
+  if(!confirm('Este ancho viene del último viaje de ese mismo carril.\n\n¿De verdad cambió el ancho? Si lo abres, captúralo bien: de este número sale el volumen.')) return;
+  _anchoDesbloqueado[i]=true;
+  if(typeof renderConceptosContainer==='function') renderConceptosContainer();
+  setTimeout(()=>{ const el=document.getElementById('f_aw1_'+i); if(el){ el.focus(); el.select(); } },60);
+};
 function prellenarKdePorConcepto(forzar){
   const el=document.getElementById('f_kde_0');
   if(!el) return;
@@ -6859,6 +6875,24 @@ function prellenarKdePorConcepto(forzar){
     if(cv&&cv.ka) kaUlt=cv.ka;
   }
   if(kaUlt){ el.value=fmtCad(kaUlt); el.dataset.autofill='1'; conceptosViaje[0].kde=kaUlt; }
+  // Junto con el cadenamiento se arrastra el ANCHO con el que terminó ese mismo carril, para que
+  // el tendido continúe con la misma franja y no haya que recordarla ni volver a medirla. Queda
+  // bloqueado (candado) para que no se modifique de pasada: si el carril de verdad cambió de
+  // ancho, se abre el candado a propósito.
+  let anchoUlt=null;
+  if(ult.conceptos&&Array.isArray(ult.conceptos)){
+    const cv=ult.conceptos.find(cv=>cv.id===concId && (!carrilSel || (cv.carril||ult.carril)===carrilSel));
+    if(cv) anchoUlt=(cv.ancho_fin!=null?cv.ancho_fin:(cv.ancho!=null?cv.ancho:null));
+  } else {
+    anchoUlt=(ult.ancho_fin!=null?ult.ancho_fin:(ult.ancho!=null?ult.ancho:null));
+  }
+  if(anchoUlt!=null && +anchoUlt>0 && !_anchoDesbloqueado[0]){
+    conceptosViaje[0].aw1=+anchoUlt;
+    conceptosViaje[0].awHeredado=+anchoUlt;
+    const elA=document.getElementById('f_aw1_0');
+    if(elA){ elA.value=(+anchoUlt).toFixed(2); }
+    if(typeof renderConceptosContainer==='function') renderConceptosContainer();
+  }
 }
 function prellenarKde(){
   refrescarFechaJornada();
