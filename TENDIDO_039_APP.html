@@ -3994,9 +3994,12 @@ function _hayFiltrosCol(){ return Object.values(_tiroF).some(v=>v!==''); }
 // ═══ GRÁFICO DE AVANCE POR CADENAMIENTO (planta, por lado) ═══
 function ladoDe(carril){
   const k=(carril||'').toUpperCase();
-  if(k.includes('IZQ')) return 'IZQ';
-  if(k.includes('CENT')) return 'CEN';
-  if(k.includes('DER')) return 'DER';
+  // Se exige que la palabra EMPIECE ahí (\b). Con includes, "ParaDERo" contenía "DER" y los
+  // paraderos se clasificaban como carril derecho: se comparaban entre sí y con el carril real,
+  // inventando traslapes que nunca ocurrieron.
+  if(/\bIZQ/.test(k)) return 'IZQ';
+  if(/\bCENT/.test(k)) return 'CEN';
+  if(/\bDER/.test(k)) return 'DER';
   return null; // carril no reconocido: NO se asigna a ninguno (antes caía en CEN y encimaba viajes)
 }
 // Rangos completos por tramo (inicial → final del contrato)

@@ -523,9 +523,12 @@ const LADO_COL={IZQ:'#3ecf8e',CEN:'#f0b429',DER:'#60a5fa'};
 const RENIV_COL='#a78bfa', BACHEO_COL='#ec4899';
 function ladoDe(carril){
   const k=(carril||'').toUpperCase();
-  if(k.includes('IZQ')) return 'IZQ';
-  if(k.includes('CENT')) return 'CEN';
-  if(k.includes('DER')) return 'DER';
+  // Se exige que la palabra EMPIECE ahí (\b). Con includes, "ParaDERo" contenía "DER" y los
+  // paraderos se clasificaban como carril derecho: se comparaban entre sí y con el carril real,
+  // inventando traslapes que nunca ocurrieron.
+  if(/\bIZQ/.test(k)) return 'IZQ';
+  if(/\bCENT/.test(k)) return 'CEN';
+  if(/\bDER/.test(k)) return 'DER';
   return null;
 }
 function fmtCad(n){
