@@ -3553,13 +3553,20 @@ function render(){
   const fechaAyer=idxHoy>0?fechasConDatos[idxHoy-1]:null;
   const ayerR=fechaAyer?filtered.filter(r=>r.fecha===fechaAyer):[];
 
-  const tonHoy=hoyR.reduce((s,r)=>s+r.ton_recibidas,0);
-  const tonAyer=ayerR.reduce((s,r)=>s+r.ton_recibidas,0);
-  const volHoy=hoyR.reduce((s,r)=>s+_volR(r),0);
-  const tonAcum=filtered.reduce((s,r)=>s+r.ton_recibidas,0);
-  const volAcum=filtered.reduce((s,r)=>s+_volR(r),0);
-  const areaAcum=filtered.reduce((s,r)=>s+r.area,0);
-  const longAcum=filtered.reduce((s,r)=>s+r.longitud,0);
+  // PRODUCCIÓN = solo viajes que de verdad descargaron. Los regresos (camión que se devolvió
+  // cargado) y los cancelados no colocaron material: no suman toneladas ni cuentan como viaje.
+  // Además no traen el campo ton_recibidas, y sumarlos sin más volvía NaN el KPI de toneladas
+  // acumuladas. Las sumas van con ||0 por si algún viaje viejo viene sin el campo.
+  const _esProd = r => r.tipo!=='regreso' && r.tipo!=='cancelado';
+  const prod=filtered.filter(_esProd);
+  const hoyProd=hoyR.filter(_esProd), ayerProd=ayerR.filter(_esProd);
+  const tonHoy=hoyProd.reduce((s,r)=>s+(+r.ton_recibidas||0),0);
+  const tonAyer=ayerProd.reduce((s,r)=>s+(+r.ton_recibidas||0),0);
+  const volHoy=hoyProd.reduce((s,r)=>s+(+_volR(r)||0),0);
+  const tonAcum=prod.reduce((s,r)=>s+(+r.ton_recibidas||0),0);
+  const volAcum=prod.reduce((s,r)=>s+(+_volR(r)||0),0);
+  const areaAcum=prod.reduce((s,r)=>s+(+r.area||0),0);
+  const longAcum=prod.reduce((s,r)=>s+(+r.longitud||0),0);
   // Emulsión: se suma UNA vez por FECHA (no por viaje, para no duplicar — el litraje es del día
   // completo, no de cada viaje individual), tomando lts_usados de la colección real emulsion039.
   const fechasFiltradas=[...new Set(filtered.map(r=>r.fecha).filter(Boolean))];
@@ -3576,6 +3583,13 @@ function render(){
   const favTon=m3FavAcum*DEN;
   const cambio=tonAyer>0?((tonHoy-tonAyer)/tonAyer*100).toFixed(1):null;
   const volAcumConExtra=+(volAcum+extraTotal).toFixed(3);
+  // VOLUMEN REAL (ton ÷ densidad) — segundo dato, informativo. NO es el oficial: a SICT se le
+  // cobra el geométrico (área × espesor), que es el de arriba. Se calcula SOLO con los viajes,
+  // porque el volumen extra importado por Excel (renivelación/bacheo) no trae tonelaje: por eso
+  // se compara contra volAcum (viajes, sin extras) y no contra volAcumConExtra — si no, la
+  // diferencia saldría inflada por un volumen que nunca pasó por báscula.
+  const volRealAcum=+(tonAcum/DEN).toFixed(2);
+  const difGeoReal=+(volAcum-volRealAcum).toFixed(2);
   const pctAvance=(volAcumConExtra/TOT_VOL*100).toFixed(1);
 
   // By date for charts
@@ -3586,7 +3600,7 @@ function render(){
 
   // By camion
   const byCam={};
-  filtered.forEach(r=>{if(!byCam[r.placas])byCam[r.placas]={ton:0,long:0,vj:0,area:0};byCam[r.placas].ton+=r.ton_recibidas;byCam[r.placas].long+=r.longitud;byCam[r.placas].vj++;byCam[r.placas].area+=r.area;});
+  prod.forEach(r=>{if(!byCam[r.placas])byCam[r.placas]={ton:0,long:0,vj:0,area:0};byCam[r.placas].ton+=(+r.ton_recibidas||0);byCam[r.placas].long+=(+r.longitud||0);byCam[r.placas].vj++;byCam[r.placas].area+=(+r.area||0);});
   const camList=Object.entries(byCam).sort((a,b)=>b[1].long-a[1].long);
   const maxLong=camList.length>0?camList[0][1].long:1;
 
@@ -3706,10 +3720,10 @@ function render(){
     kpis: ()=> `
       <div class="section-hdr">📈 Producción — día y acumulado</div>
       <div class="kpi-grid" id="kpiGrid">
-        <div class="kpi blue"><span class="kpi-icon">🏗️</span><div class="kpi-label">Toneladas hoy</div><div class="kpi-value">${tonHoy.toFixed(1)}</div><div class="kpi-sub">${hoyR.length} viajes · ${(hoyR.reduce((s,r)=>s+r.area,0)).toFixed(0)} m²</div>${cambio?`<div class="kpi-delta ${parseFloat(cambio)>=0?'up':'down'}">${parseFloat(cambio)>=0?'▲':'▼'} ${Math.abs(cambio)}% vs ayer</div>`:'<div class="kpi-delta neutral">Primer día</div>'}</div>
+        <div class="kpi blue"><span class="kpi-icon">🏗️</span><div class="kpi-label">Toneladas hoy</div><div class="kpi-value">${tonHoy.toFixed(1)}</div><div class="kpi-sub">${hoyProd.length} viajes · ${(hoyProd.reduce((s,r)=>s+(+r.area||0),0)).toFixed(0)} m²</div>${cambio?`<div class="kpi-delta ${parseFloat(cambio)>=0?'up':'down'}">${parseFloat(cambio)>=0?'▲':'▼'} ${Math.abs(cambio)}% vs ayer</div>`:'<div class="kpi-delta neutral">Primer día</div>'}</div>
         <div class="kpi green"><span class="kpi-icon">📐</span><div class="kpi-label">Volumen hoy m³</div><div class="kpi-value">${volHoy.toFixed(2)}</div><div class="kpi-sub">geométrico · ${tonHoy.toFixed(1)} ton báscula</div></div>
-        <div class="kpi gold"><span class="kpi-icon">📦</span><div class="kpi-label">Ton acumuladas</div><div class="kpi-value">${tonAcum.toFixed(0)}</div><div class="kpi-sub">${filtered.length} viajes · ${Object.keys(byCam).length} camiones</div></div>
-        <div class="kpi blue"><span class="kpi-icon">🧱</span><div class="kpi-label">Vol. acum m³</div><div class="kpi-value">${volAcumConExtra.toFixed(1)}</div><div class="kpi-sub">${pctAvance}% del catálogo total${extraTotal>0?` · <span style="color:#a78bfa">incluye +${extraTotal.toFixed(1)} m³ extra</span>`:''}</div></div>
+        <div class="kpi gold"><span class="kpi-icon">📦</span><div class="kpi-label">Ton acumuladas</div><div class="kpi-value">${tonAcum.toFixed(0)}</div><div class="kpi-sub">${prod.length} viajes · ${Object.keys(byCam).length} camiones</div></div>
+        <div class="kpi blue"><span class="kpi-icon">🧱</span><div class="kpi-label">Vol. acum m³ <span style="font-weight:400;color:var(--gray)">· geométrico (lo que se cobra)</span></div><div class="kpi-value">${volAcumConExtra.toFixed(1)}</div><div class="kpi-sub">${pctAvance}% del catálogo total${extraTotal>0?` · <span style="color:#a78bfa">incluye +${extraTotal.toFixed(1)} m³ extra</span>`:''}${volRealAcum>0?`<br><span title="Toneladas de báscula entre densidad ${DEN}. Solo de viajes capturados: el volumen extra importado por Excel no trae tonelaje, por eso no entra aquí ni en la diferencia.">real ${volRealAcum.toFixed(1)} m³ (ton÷${DEN}) · <span style="color:var(--green);font-weight:700">a favor ${difGeoReal>=0?'+':''}${difGeoReal.toFixed(1)}</span></span>`:''}</div></div>
         <div class="kpi green"><span class="kpi-icon">💰</span><div class="kpi-label">m³ ganancia</div><div class="kpi-value">${m3FavAcum>=0?'+':''}${m3FavAcum.toFixed(2)}</div><div class="kpi-sub">${(m3FavAcum>=0?'+':'')}${favTon.toFixed(1)} ton a favor · todos los conceptos</div></div>
         <div class="kpi purple"><span class="kpi-icon">🛢️</span><div class="kpi-label">Emulsión ECR-65</div><div class="kpi-value">${emulAcum>0?emulAcum.toFixed(0):'—'}</div><div class="kpi-sub">${emulAcum>0&&areaAcum>0?(emulAcum/areaAcum).toFixed(3)+' lts/m²':'Sin registro'}</div></div>
       </div>`,
