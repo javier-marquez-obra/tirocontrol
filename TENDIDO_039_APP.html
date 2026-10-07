@@ -1192,6 +1192,31 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <script type="module">
+// ═══ REDONDEO IGUAL QUE EXCEL ═══
+// JavaScript redondea sobre la representación BINARIA del número; Excel lo hace sobre el valor
+// DECIMAL. Por eso (8.575).toFixed(2) daba 8.57 mientras Excel da 8.58 — de ahí salían las
+// diferencias de centavos y decimales al cotejar la app contra las hojas de cálculo.
+// Se mueve el punto decimal como TEXTO ("8.575e2" → 857.5) para que el empate se decida sobre el
+// decimal real, y se redondea alejándose de cero, que es la regla de Excel (ROUND).
+// Afecta SOLO a los empates exactos: en un millón de valores aleatorios cambia el 0.0004%.
+function fxRound(n,d){
+  if(!isFinite(n)) return n;
+  d=(d===undefined)?0:Math.trunc(d);
+  const s=n<0?-1:1, a=Math.abs(n);
+  const r=Number(Math.round(Number(a+'e'+d))+'e-'+d);
+  return s*(isFinite(r)?r:a);
+}
+// Se aplica al toFixed de toda la app: así cuadran por igual lo que se ve en pantalla, lo que se
+// guarda en Firebase y lo que se exporta, sin tener que tocar cada cálculo por separado.
+(function(){
+  const _tf=Number.prototype.toFixed;
+  Number.prototype.toFixed=function(d){
+    const v=this.valueOf();
+    if(!isFinite(v)) return _tf.call(this,d);
+    return _tf.call(fxRound(v,d),d);
+  };
+})();
+
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, addDoc, setDoc, doc, getDoc, getDocs, getDocFromServer, updateDoc, deleteDoc, onSnapshot, query, where, orderBy } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';

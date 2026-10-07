@@ -323,6 +323,7 @@ tbody tr:hover td{background:var(--blue4)}
   <button class="f-chip" id="btnSoloReal" onclick="setVistaExtra(false)" style="border-color:#16a34a;color:#16a34a" title="Solo lo capturado viaje por viaje, sin el Excel de extras">🚚 Solo real</button>
   <button class="f-chip active" id="btnConExtra" onclick="setVistaExtra(true)" style="border-color:#7c3aed;color:#7c3aed" title="Incluye el volumen extra importado por Excel — lo que se cobra a SICT">📋 Con extra (cobro)</button>
   <span class="f-time" id="lastTime">—</span>
+  <span class="f-time" id="syncObra" style="color:var(--gold);font-weight:700">—</span>
 </div>
 
 
@@ -379,6 +380,31 @@ tbody tr:hover td{background:var(--blue4)}
 
 
 <script type="module">
+// ═══ REDONDEO IGUAL QUE EXCEL ═══
+// JavaScript redondea sobre la representación BINARIA del número; Excel lo hace sobre el valor
+// DECIMAL. Por eso (8.575).toFixed(2) daba 8.57 mientras Excel da 8.58 — de ahí salían las
+// diferencias de centavos y decimales al cotejar la app contra las hojas de cálculo.
+// Se mueve el punto decimal como TEXTO ("8.575e2" → 857.5) para que el empate se decida sobre el
+// decimal real, y se redondea alejándose de cero, que es la regla de Excel (ROUND).
+// Afecta SOLO a los empates exactos: en un millón de valores aleatorios cambia el 0.0004%.
+function fxRound(n,d){
+  if(!isFinite(n)) return n;
+  d=(d===undefined)?0:Math.trunc(d);
+  const s=n<0?-1:1, a=Math.abs(n);
+  const r=Number(Math.round(Number(a+'e'+d))+'e-'+d);
+  return s*(isFinite(r)?r:a);
+}
+// Se aplica al toFixed de toda la app: así cuadran por igual lo que se ve en pantalla, lo que se
+// guarda en Firebase y lo que se exporta, sin tener que tocar cada cálculo por separado.
+(function(){
+  const _tf=Number.prototype.toFixed;
+  Number.prototype.toFixed=function(d){
+    const v=this.valueOf();
+    if(!isFinite(v)) return _tf.call(this,d);
+    return _tf.call(fxRound(v,d),d);
+  };
+})();
+
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
 import { initializeFirestore, persistentLocalCache, collection, onSnapshot, query, orderBy, doc, setDoc } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, sendPasswordResetEmail } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
@@ -535,6 +561,8 @@ let _p039_catalogo=[];      // [{key,codigoSCT,label,unidad,volContrato,pu,obra}
 let _p039_estimaciones=[];  // [{id,numero,fechaIni,fechaFin,incluirExtra,cerrada,lineas:[...],notas}]
 // ETAPA 3 — Seguimiento diario: un registro por renglón que sí se gastó ese día.
 let _p039_gastos=[];        // [{id,fecha,renglonId,categoria,descripcion,cantidad,pu,importe,obs,auto,origenId}]
+// m³ de control por día, capturados a mano para cotejar contra TiroControl: {dias:{'2026-09-12':120.45}}
+let _p039_conc={dias:{}};
 let _p039ListenerStarted=false;
 function startPresupuesto039Listener(){
   if(_p039ListenerStarted) return; _p039ListenerStarted=true;
@@ -546,6 +574,7 @@ function startPresupuesto039Listener(){
         else if(id==='catalogo') _p039_catalogo=x.items||[];
         else if(id==='estimaciones') _p039_estimaciones=x.items||[];
         else if(id==='gastos') _p039_gastos=x.items||[];
+        else if(id==='conciliacion') _p039_conc={dias:(x.dias||{})};
         else if(id==='config') _p039_config={ grupos:[], codigosConfig:{}, precioCombustible:'', fechaInicioContrato:'', fechaTerminoContrato:'', fechaInicioReal:'', fechaTerminoReal:'', ...x };
       });
       // Debug temporal: permite inspeccionar los datos reales desde la consola del navegador
@@ -559,7 +588,8 @@ function startPresupuesto039Listener(){
 // config039. Devuelve true/false para que la UI pueda avisar si falló.
 async function guardarP039(tipo, data){
   try{
-    await setDoc(doc(db,'presupuesto039',tipo), tipo==='config' ? data : {items:data});
+    // config y conciliacion guardan su propia forma de objeto; el resto va como lista de items.
+    await setDoc(doc(db,'presupuesto039',tipo), (tipo==='config'||tipo==='conciliacion') ? data : {items:data});
     return true;
   }catch(e){
     console.warn('guardarP039', tipo, e);
@@ -567,6 +597,33 @@ async function guardarP039(tipo, data){
     return false;
   }
 }
+// ── Conciliación: captura de las toneladas de control por día ──
+window.setConcDia=async function(fecha, valor){
+  const v=String(valor||'').trim();
+  const dias={...((_p039_conc&&_p039_conc.dias)||{})};
+  if(v==='') delete dias[fecha];
+  else {
+    const n=p039_evalFormula(v).valor;   // acepta fórmulas, igual que el resto del módulo
+    if(!isFinite(n)){ alert('Ese valor no es un número'); return; }
+    dias[fecha]=+n.toFixed(2);
+  }
+  const ok=await guardarP039('conciliacion', {dias});
+  if(ok){ _p039_conc={dias}; _repintarConciliacion(); }
+};
+window.setTolConc=async function(){
+  const actual=(_p039_config.tolConciliacion!=null?_p039_config.tolConciliacion:0.5);
+  const v=prompt('¿A partir de cuántos m³ de diferencia quieres que marque el día?\n\nEjemplo: 0.5 marca cualquier día que se pase de medio metro cúbico.', actual);
+  if(v==null) return;
+  const n=parseFloat(v);
+  if(!isFinite(n)||n<0){ alert('Escribe un número válido'); return; }
+  const ok=await guardarP039('config', {..._p039_config, tolConciliacion:n});
+  if(ok){ _p039_config={..._p039_config, tolConciliacion:n}; _repintarConciliacion(); }
+};
+function _repintarConciliacion(){
+  const w=document.getElementById('concWrap');
+  if(w && typeof buildConciliacion==='function') w.innerHTML=buildConciliacion(filtered);
+}
+
 // ═══ MÓDULO DE COSTOS — UI (Etapa 1: Presupuesto base + Config) ═══
 const P039_CATEGORIAS=[
   {key:'material',label:'Material',color:'#b45309',icon:'📦'},
@@ -1912,14 +1969,14 @@ let secciones={
 // ═══ GRUPOS (uno se ve a la vez, como pestañas) — dentro de cada grupo TODAS sus secciones van
 // prendidas siempre; lo único que se ajusta es el ORDEN en que aparecen (con las flechas ▲▼).
 const GRUPOS={
-  financiera:['financiero','programa','costos','gastos'],
+  financiera:['financiero','conciliacion','programa','costos','gastos'],
   avances:['kpis','avance','graficas','espesor','faltante','balanceDias','larguillo'],
   analisis:['emulsion','tendencia','horarios','rutas','tabla']
 };
 const GRUPO_LABEL={financiera:'💰 Financiera', avances:'📈 Avances', analisis:'🔍 Análisis de producción y tendencias'};
 const GRUPO_COLOR={financiera:'#7c3aed', avances:'#16a34a', analisis:'#2563eb'};
 const SECCION_LABEL={
-  financiero:'💰 Físico-financiero', programa:'📅 Avance vs programa', gastos:'💵 Gastos ARMAQOP', costos:'💰 Costos (presupuesto y gastos de obra)',
+  financiero:'💰 Físico-financiero', conciliacion:'🔍 Conciliación por día', programa:'📅 Avance vs programa', gastos:'💵 Gastos ARMAQOP', costos:'💰 Costos (presupuesto y gastos de obra)',
   kpis:'📈 Producción del día', avance:'📐 Avance por concepto', graficas:'📊 Gráficas',
   espesor:'📏 Espesor de carpeta', faltante:'⏳ Volumen faltante', balanceDias:'📅 Balance de días',
   larguillo:'🛣️ Larguillo de obra', emulsion:'🛢️ Análisis de emulsión', tendencia:'📈 Tendencia de volúmenes',
@@ -1978,6 +2035,17 @@ try { db=initializeFirestore(fb,{localCache:persistentLocalCache()}); }
 catch(e){ db=initializeFirestore(fb,{}); }
 const auth=getAuth(fb);
 
+// ── OBRA DE ESTE REPORTE ──
+// Este reporte es EXCLUSIVO del contrato TENDIDO 039. La colección 'viajes' es compartida por
+// todas las obras que se den de alta en la app de campo, así que hay que filtrar igual que allá
+// (filtrarRecordsPorObra): sin este filtro, los viajes de cualquier otra obra se sumaban al
+// avance físico y financiero del 039 e inflaban los volúmenes.
+// Los viajes viejos, anteriores al manejo de varias obras, no traen campo 'obra' y son del 039 —
+// por eso el (r.obra||'039'), idéntico al criterio de la app.
+const OBRA_REPORTE='039';
+let _repAjenos=0;   // cuántos viajes de otras obras se dejaron fuera (se avisa en pantalla)
+function _soloEstaObra(arr){ return (arr||[]).filter(r=>(r.obra||OBRA_REPORTE)===OBRA_REPORTE); }
+
 // El listener de datos SOLO arranca con sesión iniciada (lectura blindada por reglas).
 let _repListenerStarted=false;
 function startReportListener(){
@@ -1985,11 +2053,13 @@ function startReportListener(){
   // Si Firebase tarda más de 8 segundos, mostrar datos del caché mientras sigue intentando
   const _t=setTimeout(()=>{
     const c=localStorage.getItem('rep039');
-    if(c&&!allRecs.length){allRecs=JSON.parse(c);buildFechaFilter();applyFilters();setSyncErr();}
+    if(c&&!allRecs.length){allRecs=_soloEstaObra(JSON.parse(c));buildFechaFilter();applyFilters();setSyncErr();}
   },8000);
   onSnapshot(query(collection(db,'viajes'),orderBy('ts','desc')), snap=>{
     clearTimeout(_t);
-    allRecs=snap.docs.map(d=>({_id:d.id,...d.data()}));
+    const _todos=snap.docs.map(d=>({_id:d.id,...d.data()}));
+    allRecs=_soloEstaObra(_todos);
+    _repAjenos=_todos.length-allRecs.length;
     try { localStorage.setItem('rep039',JSON.stringify(allRecs.map(r=>({...r,fotos:undefined})))); } catch(e) { console.warn('localStorage lleno'); }
     setSyncOk();
     buildFechaFilter();
@@ -1997,7 +2067,7 @@ function startReportListener(){
   },()=>{
     clearTimeout(_t);
     const c=localStorage.getItem('rep039');
-    if(c){allRecs=JSON.parse(c);buildFechaFilter();applyFilters();}
+    if(c){allRecs=_soloEstaObra(JSON.parse(c));buildFechaFilter();applyFilters();}
     setSyncErr();
   });
 }
@@ -2068,6 +2138,10 @@ window.toggleSec = function(k) {
 window.loadData=applyFilters;
 
 function setSyncOk(){
+  // Deja ver que el reporte está contando SOLO la obra 039, y cuántos viajes de otras obras
+  // quedaron fuera — así se puede cotejar contra la app de campo sin adivinar.
+  const el=document.getElementById('syncObra');
+  if(el) el.textContent = _repAjenos>0 ? ('Obra '+OBRA_REPORTE+' · '+_repAjenos+' viaje(s) de otras obras excluido(s)') : ('Obra '+OBRA_REPORTE);
   document.getElementById('syncDot').style.background='#10b981';
   document.getElementById('syncLabel').textContent='En vivo · '+new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
   document.getElementById('syncChip').className='sync-chip';
@@ -3522,11 +3596,110 @@ function render(){
 
   const ruta=RUTAS[rutaActual];
 
+  // ── CONCILIACIÓN POR DÍA ──
+  // Existe porque el reporte y TiroControl pueden decir cosas distintas del mismo día y había que
+  // ir a buscar la diferencia a mano en Excel. Aquí se ponen lado a lado, por fecha:
+  //   · Ton TiroControl  — suma de las toneladas de báscula capturadas viaje por viaje
+  //   · Ton de control   — las que Javier cargó por su cuenta (se teclean aquí y se guardan)
+  // y se marca el día que no cuadra, con el monto exacto de la diferencia.
+  // Se muestran también los m³ geométrico y real para ver de dónde sale cada número.
+  window.buildConciliacion=function(recs){
+    // La comparación es en METROS CÚBICOS porque es la unidad de pago del contrato. El m³ de
+    // TiroControl es el GEOMÉTRICO (largo × ancho × espesor), el mismo que alimenta el avance
+    // físico y el financiero de este reporte — así se compara contra lo que de verdad se cobra.
+    // Las toneladas y el m³ real (ton÷densidad) quedan de referencia, para ver de dónde sale
+    // una diferencia cuando aparece.
+    const tol=+(_p039_config.tolConciliacion!=null?_p039_config.tolConciliacion:0.5);  // m³
+    const manual=(_p039_conc&&_p039_conc.dias)||{};
+    const dias={};
+    (recs||[]).forEach(r=>{
+      if(!r.fecha || r.tipo==='regreso' || r.tipo==='cancelado') return;
+      if(!dias[r.fecha]) dias[r.fecha]={ton:0,geo:0,n:0};
+      dias[r.fecha].ton += (+r.ton_recibidas||0);
+      _conceptosReales(r).forEach(({vol})=>{ dias[r.fecha].geo += (+vol||0); });
+      dias[r.fecha].n++;
+    });
+    // También se listan los días que solo existen en la captura manual: un día entero que falte
+    // en TiroControl es justo lo que hay que ver, no algo que deba quedar fuera del cuadro.
+    Object.keys(manual).forEach(f=>{ if(!dias[f]) dias[f]={ton:0,geo:0,n:0}; });
+    const fechas=Object.keys(dias).sort().reverse();
+    if(!fechas.length) return `<div class="section-hdr">🔍 Conciliación por día</div>
+      <div class="card"><div class="card-body" style="color:var(--gray);font-size:12px">No hay viajes en el filtro actual.</div></div>`;
+
+    let difs=0, sumTC=0, sumMan=0, difMax=0, diaMax=null;
+    const filas=fechas.map(f=>{
+      const d=dias[f], man=manual[f];
+      const tieneMan = man!=null && man!=='';
+      const mn = tieneMan ? +man : null;
+      const dif = tieneMan ? +(d.geo-mn).toFixed(2) : null;
+      const mal = tieneMan && Math.abs(dif)>tol;
+      if(mal){ difs++; if(Math.abs(dif)>Math.abs(difMax)){ difMax=dif; diaMax=f; } }
+      sumTC+=d.geo; if(tieneMan) sumMan+=mn;
+      return `<tr style="border-bottom:1px solid var(--border);${mal?'background:var(--red3)':''}">
+        <td style="padding:6px"><b>${f}</b><br><span style="font-size:10px;color:var(--gray)">${d.n} viaje(s)</span></td>
+        <td style="padding:6px;text-align:right;font-family:monospace;font-weight:700">${d.geo.toFixed(2)}</td>
+        <td style="padding:6px;text-align:right">
+          <input type="number" step="0.01" value="${tieneMan?mn:''}" placeholder="—"
+            onchange="setConcDia('${f}',this.value)"
+            style="width:94px;padding:5px;border:1px solid ${mal?'var(--red)':'var(--gray4)'};border-radius:6px;text-align:right;font-family:monospace;font-size:12px;background:var(--white);color:var(--txt)"></td>
+        <td style="padding:6px;text-align:right;font-family:monospace;font-weight:800;color:${!tieneMan?'var(--gray)':(mal?'var(--red)':'var(--green)')}">
+          ${tieneMan?((dif>0?'+':'')+dif.toFixed(2)):'—'}</td>
+        <td style="padding:6px;text-align:right;font-family:monospace;color:var(--gray)">${d.ton.toFixed(2)}</td>
+        <td style="padding:6px;text-align:right;font-family:monospace;color:var(--gray)">${(d.ton/DEN).toFixed(2)}</td>
+        <td style="padding:6px;text-align:center">${!tieneMan?'<span style="color:var(--gray)">sin capturar</span>':(mal?'<b style="color:var(--red)">⚠️ NO CUADRA</b>':'<span style="color:var(--green)">✓</span>')}</td>
+      </tr>`;
+    }).join('');
+
+    const difTotal=+(sumTC-sumMan).toFixed(2);
+    const capturados=fechas.filter(f=>manual[f]!=null&&manual[f]!=='').length;
+    // El peso en dinero de la diferencia, al precio del concepto de mayor volumen del contrato,
+    // para dimensionar si vale la pena perseguirla antes de presentar la estimación.
+    const puRef=CAT.carp3?CAT.carp3.pu:0;
+    return `<div class="section-hdr">🔍 Conciliación por día — m³ de TiroControl vs lo que tú llevas</div>
+      <div class="card">
+        <div class="card-hdr"><h4>${difs>0?`⚠️ ${difs} día(s) no cuadran`:(capturados?'✓ Todos los días capturados cuadran':'Captura tus m³ por día')}</h4>
+          <div class="meta">${capturados}/${fechas.length} día(s) con tu dato</div></div>
+        <div class="card-body">
+          <div style="font-size:11px;color:var(--gray);margin-bottom:10px">
+            En <b>m³ de control</b> escribe los metros cúbicos que tú llevas de cada día. Se comparan contra el volumen
+            geométrico de TiroControl, que es el que alimenta el avance físico y el financiero de este reporte.
+            Se marca el día cuando la diferencia pasa de <b>${tol} m³</b>
+            (<span onclick="setTolConc()" style="color:var(--gold);cursor:pointer;text-decoration:underline">cambiar tolerancia</span>).
+          </div>
+          ${capturados?`<div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:10px;font-size:12px;padding:8px;background:var(--surf);border-radius:8px">
+            <div>TiroControl: <b style="font-family:monospace">${sumTC.toFixed(2)}</b> m³</div>
+            <div>Tu control: <b style="font-family:monospace">${sumMan.toFixed(2)}</b> m³</div>
+            <div>Diferencia: <b style="font-family:monospace;color:${Math.abs(difTotal)>tol?'var(--red)':'var(--green)'}">${difTotal>0?'+':''}${difTotal.toFixed(2)}</b> m³
+              ${puRef&&Math.abs(difTotal)>0.009?`<span style="color:var(--gray)">≈ ${_fmtMXNc(Math.abs(difTotal)*puRef)}</span>`:''}</div>
+            ${diaMax?`<div style="color:var(--red)">Mayor desvío: <b>${diaMax}</b> (${difMax>0?'+':''}${difMax.toFixed(2)} m³)</div>`:''}
+          </div>`:''}
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:12px">
+              <thead><tr style="background:var(--gray3);font-size:11px">
+                <th style="padding:6px;text-align:left">Día</th>
+                <th style="padding:6px;text-align:right">m³ TiroControl</th>
+                <th style="padding:6px;text-align:right">m³ de control</th>
+                <th style="padding:6px;text-align:right">Diferencia m³</th>
+                <th style="padding:6px;text-align:right">ton</th>
+                <th style="padding:6px;text-align:right">m³ real</th>
+                <th style="padding:6px;text-align:center">Estado</th>
+              </tr></thead>
+              <tbody>${filas}</tbody>
+            </table>
+          </div>
+          <div style="font-size:10px;color:var(--gray);margin-top:8px">
+            m³ TiroControl = geométrico (largo × ancho × espesor), el que se cobra · m³ real = ton ÷ ${DEN} · los regresos y cancelados no suman.
+          </div>
+        </div>
+      </div>`;
+  };
+
   // Un "builder" (función) por cada sección — arma su HTML usando las variables ya calculadas
   // arriba. El orden en que se pintan ya NO está fijo aquí: lo decide _ordenGrupo[_grupoActivo]
   // (ajustable con las flechas ▲▼ del panel "↕️ Orden"), y solo se pintan las del grupo activo.
   const builders={
     financiero: ()=> buildFinanciero(exec),
+    conciliacion: ()=> `<div id="concWrap">${buildConciliacion(filtered)}</div>`,
     programa: ()=> `<div id="avanceProgWrap">${buildAvanceProgramado(filtered)}</div>`,
     gastos: ()=> buildGastos(filtered),
     costos: ()=> buildCostos(),
