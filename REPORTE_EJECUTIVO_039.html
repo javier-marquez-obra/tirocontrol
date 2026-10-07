@@ -2419,9 +2419,18 @@ function buildEspesor(recs){
     const k=clas(r); if(k!=='carp3'&&k!=='carp5') return;
     if(!(r.area>0)) return;
     const esp=+(r.ton_recibidas/(r.area*DEN)*100).toFixed(2);
-    if(esp>0 && esp<15) grupos[k].push(esp); // filtro de sanidad: fuera de 0–15cm es dato mal capturado
+    // Se guarda área y tonelaje, no solo el espesor: el promedio tiene que ir PONDERADO POR ÁREA.
+    // Promediar los espesores a secas le da el mismo peso a un viaje que cubrió 20 m² que a uno
+    // de 400 m², y el resultado sube por encima del espesor que de verdad se tendió.
+    if(esp>0 && esp<15) grupos[k].push({esp, area:+r.area||0, ton:+r.ton_recibidas||0});
   });
-  const prom=(arr)=> arr.length ? +(arr.reduce((s,v)=>s+v,0)/arr.length).toFixed(2) : null;
+  // Espesor ponderado = toneladas totales ÷ (área total × densidad). Es el mismo criterio con el
+  // que se revisa el espesor de un tramo completo en campo.
+  const prom=(arr)=>{
+    if(!arr.length) return null;
+    const a=arr.reduce((s,x)=>s+x.area,0), t=arr.reduce((s,x)=>s+x.ton,0);
+    return a>0 ? +(t/(a*DEN)*100).toFixed(2) : null;
+  };
   const e3=prom(grupos.carp3), e5=prom(grupos.carp5);
   const todos=[...grupos.carp3,...grupos.carp5];
   const eTot=prom(todos);
