@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#0d1117">
-<link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22TiroControl%20%5Cu00b7%20Reporte%20Ejecutivo%22%2C%22short_name%22%3A%22TiroControl%20Reporte%22%2C%22display%22%3A%22standalone%22%2C%22orientation%22%3A%22any%22%2C%22start_url%22%3A%22https%3A%2F%2Fjavier-marquez-obra.github.io%2Ftirocontrol%2FREPORTE_EJECUTIVO_039.html%22%2C%22scope%22%3A%22https%3A%2F%2Fjavier-marquez-obra.github.io%2Ftirocontrol%2F%22%2C%22background_color%22%3A%22%230d1117%22%2C%22theme_color%22%3A%22%230d1117%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Fjavier-marquez-obra.github.io%2Ftirocontrol%2Ficons%2Ficon-192.png%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fpng%22%2C%22purpose%22%3A%22any%22%7D%2C%7B%22src%22%3A%22https%3A%2F%2Fjavier-marquez-obra.github.io%2Ftirocontrol%2Ficons%2Ficon-512.png%22%2C%22sizes%22%3A%22512x512%22%2C%22type%22%3A%22image%2Fpng%22%2C%22purpose%22%3A%22any%22%7D%2C%7B%22src%22%3A%22https%3A%2F%2Fjavier-marquez-obra.github.io%2Ftirocontrol%2Ficons%2Ficon-maskable-192.png%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fpng%22%2C%22purpose%22%3A%22maskable%22%7D%2C%7B%22src%22%3A%22https%3A%2F%2Fjavier-marquez-obra.github.io%2Ftirocontrol%2Ficons%2Ficon-maskable-512.png%22%2C%22sizes%22%3A%22512x512%22%2C%22type%22%3A%22image%2Fpng%22%2C%22purpose%22%3A%22maskable%22%7D%5D%7D">
+<link rel="manifest" href="data:application/manifest+json,%7B%22id%22%3A%22%2Ftirocontrol%2Fapp-reporte%22%2C%22name%22%3A%22TiroControl%20%C2%B7%20Reporte%20Ejecutivo%22%2C%22short_name%22%3A%22TiroControl%20Reporte%22%2C%22display%22%3A%22standalone%22%2C%22orientation%22%3A%22any%22%2C%22start_url%22%3A%22https%3A%2F%2Fjavier-marquez-obra.github.io%2Ftirocontrol%2FREPORTE_EJECUTIVO_039.html%22%2C%22scope%22%3A%22https%3A%2F%2Fjavier-marquez-obra.github.io%2Ftirocontrol%2FREPORTE_EJECUTIVO_039.html%22%2C%22background_color%22%3A%22%230d1117%22%2C%22theme_color%22%3A%22%230d1117%22%2C%22icons%22%3A%5B%7B%22src%22%3A%22https%3A%2F%2Fjavier-marquez-obra.github.io%2Ftirocontrol%2Ficons%2Ficon-192.png%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fpng%22%2C%22purpose%22%3A%22any%22%7D%2C%7B%22src%22%3A%22https%3A%2F%2Fjavier-marquez-obra.github.io%2Ftirocontrol%2Ficons%2Ficon-512.png%22%2C%22sizes%22%3A%22512x512%22%2C%22type%22%3A%22image%2Fpng%22%2C%22purpose%22%3A%22any%22%7D%2C%7B%22src%22%3A%22https%3A%2F%2Fjavier-marquez-obra.github.io%2Ftirocontrol%2Ficons%2Ficon-maskable-192.png%22%2C%22sizes%22%3A%22192x192%22%2C%22type%22%3A%22image%2Fpng%22%2C%22purpose%22%3A%22maskable%22%7D%2C%7B%22src%22%3A%22https%3A%2F%2Fjavier-marquez-obra.github.io%2Ftirocontrol%2Ficons%2Ficon-maskable-512.png%22%2C%22sizes%22%3A%22512x512%22%2C%22type%22%3A%22image%2Fpng%22%2C%22purpose%22%3A%22maskable%22%7D%5D%7D">
 <link rel="icon" type="image/png" href="https://javier-marquez-obra.github.io/tirocontrol/icons/favicon-32.png">
 <link rel="apple-touch-icon" href="https://javier-marquez-obra.github.io/tirocontrol/icons/apple-touch-icon.png">
 <title>TiroControl · Reporte Ejecutivo</title>
@@ -687,6 +687,21 @@ function p039_catalogoSemilla(){
 }
 function p039_catalogoEfectivo(){
   return (_p039_catalogo && _p039_catalogo.length) ? _p039_catalogo : p039_catalogoSemilla();
+}
+// ── META VIGENTE POR CONCEPTO ──
+// El catálogo E-7 original (const CAT) son los volúmenes con los que se firmó. Cuando hay convenio
+// de reducción o ampliación de metas, el volumen que de verdad se va a ejecutar es otro, y medir
+// el faltante contra el original hace que el reporte muestre un pendiente que ya no existe.
+// La meta vigente se edita en 🧾 Generador → Catálogo de cobro (campo "Vol. contrato").
+function metaVigente(key){
+  const c=p039_catalogoEfectivo().find(x=>x.key===key);
+  const v=c?p039_num(c.volContrato):null;
+  return (v!=null && isFinite(v) && v>0) ? v : (CAT[key]?CAT[key].vol:0);
+}
+// true cuando esa meta ya no es la del contrato original (hubo convenio)
+function metaModificada(key){
+  const orig=CAT[key]?CAT[key].vol:0;
+  return Math.abs(metaVigente(key)-orig) > 0.01;
 }
 // Volumen ejecutado por clave de catálogo dentro de un rango de fechas (inclusive, formato ISO).
 // Usa _conceptosReales — el MISMO reparto geométrico que alimenta KPIs, curvas S y % de catálogo,
@@ -3574,6 +3589,10 @@ function render(){
   const exec=calcExec(filtered);
   const extrasExec=calcExtras(true);
   const extraTotal=Object.values(extrasExec).reduce((s,v)=>s+v,0);
+  // Se guarda el ejecutado SOLO de viajes antes de mezclarle el extra, para poder mostrar de dónde
+  // viene cada volumen. Un concepto que en campo no se tocó pero aparece con viajes es la señal de
+  // un viaje mal clasificado, y sin este desglose no hay manera de verlo.
+  const execViajes={...exec};
   Object.keys(exec).forEach(k=>{ exec[k]=+(exec[k]+(extrasExec[k]||0)).toFixed(3); });
   // m³ ganancia: ahora es el TOTAL de los 5 conceptos (geométrico+extra − real), no solo carpeta.
   // Ver la tabla "Volumen y ganancia por concepto" (sección Físico-financiero) para el desglose.
@@ -3733,8 +3752,9 @@ function render(){
         <div class="card-hdr"><h4>📊 Progreso vs catálogo E-7</h4><div class="meta">${volAcumConExtra.toFixed(1)} / ${TOT_VOL} m³${extraTotal>0?` <span style="color:#a78bfa">(+${extraTotal.toFixed(1)} extra)</span>`:''}</div></div>
         <div class="card-body">
           ${[{key:'reniv',ex:exec.reniv},{key:'carp3',ex:exec.carp3},{key:'bach1',ex:exec.bach1},{key:'carp5',ex:exec.carp5},{key:'bach2',ex:exec.bach2}].map(c=>{
-            const cat=CAT[c.key]; const pct=Math.min(c.ex/cat.vol*100,100); const falt=Math.max(cat.vol-c.ex,0);
-            return `<div class="prog-row"><div class="prog-label">${cat.label}<br><span style="font-size:10px;color:var(--gray)">${cat.obra}</span></div><div class="prog-track"><div class="prog-fill ${cat.color}" style="width:${pct.toFixed(1)}%"></div></div><div class="prog-pct" style="color:${pct>=100?'var(--green)':pct>=50?'var(--blue)':'var(--gray)'}">${pct.toFixed(1)}%</div><div class="prog-vol">${c.ex.toFixed(1)}/${cat.vol}<br>falt: ${falt.toFixed(1)}</div></div>`;
+            const cat=CAT[c.key]; const meta=metaVigente(c.key), cambiada=metaModificada(c.key);
+            const pct=meta>0?Math.min(c.ex/meta*100,100):0; const falt=Math.max(meta-c.ex,0);
+            return `<div class="prog-row"><div class="prog-label">${cat.label}<br><span style="font-size:10px;color:var(--gray)">${cat.obra}${cambiada?' · <span style="color:#7c3aed">meta por convenio</span>':''}</span></div><div class="prog-track"><div class="prog-fill ${cat.color}" style="width:${pct.toFixed(1)}%"></div></div><div class="prog-pct" style="color:${pct>=100?'var(--green)':pct>=50?'var(--blue)':'var(--gray)'}">${pct.toFixed(1)}%</div><div class="prog-vol">${c.ex.toFixed(1)}/${meta}<br>falt: ${falt.toFixed(1)}</div></div>`;
           }).join('')}
         </div>
         ${extraTotal>0?`<div class="card-body" style="border-top:1px solid var(--border);padding-top:10px">
@@ -3765,8 +3785,19 @@ function render(){
       <div class="section-hdr">⏳ Volumen faltante — cuánto queda por colocar</div>
       <div class="falt-grid">
         ${[{key:'reniv',ex:exec.reniv},{key:'carp3',ex:exec.carp3},{key:'bach1',ex:exec.bach1},{key:'carp5',ex:exec.carp5},{key:'bach2',ex:exec.bach2}].map(c=>{
-          const cat=CAT[c.key]; const fM3=Math.max(cat.vol-c.ex,0); const fTon=fM3*DEN, fVj=Math.ceil(fTon/22); const done=fM3<=0.1;
-          return `<div class="falt-card ${done?'done':'pending'}"><div class="falt-status">${done?'✅ COMPLETADO':'⏳ PENDIENTE'}</div><div class="falt-name">${cat.label} · ${cat.obra}</div><div class="falt-rows"><div class="falt-row"><span class="falt-key">Catálogo</span><span class="falt-val">${cat.vol} m³</span></div><div class="falt-row"><span class="falt-key">Ejecutado</span><span class="falt-val">${c.ex.toFixed(2)} m³</span></div><div class="falt-row"><span class="falt-key">Faltante m³</span><span class="falt-val">${done?'0':fM3.toFixed(2)}</span></div><div class="falt-row"><span class="falt-key">Faltante ton</span><span class="falt-val">${done?'0':fTon.toFixed(1)}</span></div><div class="falt-row"><span class="falt-key">Viajes faltantes</span><span class="falt-val">${done?'✓':fVj+' viajes'}</span></div></div></div>`;
+          const cat=CAT[c.key];
+          const meta=metaVigente(c.key), cambiada=metaModificada(c.key);
+          const vj=+(execViajes[c.key]||0), ex=+(extrasExec[c.key]||0);
+          const fM3=Math.max(meta-c.ex,0); const fTon=fM3*DEN, fVj=Math.ceil(fTon/22); const done=fM3<=0.1;
+          return `<div class="falt-card ${done?'done':'pending'}"><div class="falt-status">${done?'✅ COMPLETADO':'⏳ PENDIENTE'}</div><div class="falt-name">${cat.label} · ${cat.obra}</div><div class="falt-rows">
+            <div class="falt-row"><span class="falt-key">Meta vigente</span><span class="falt-val">${meta} m³${cambiada?' <span style="color:#7c3aed;font-size:10px">(conv.)</span>':''}</span></div>
+            ${cambiada?`<div class="falt-row"><span class="falt-key" style="font-size:10px;color:var(--gray)">Contrato original</span><span class="falt-val" style="font-size:10px;color:var(--gray);text-decoration:line-through">${cat.vol} m³</span></div>`:''}
+            <div class="falt-row"><span class="falt-key">Ejecutado</span><span class="falt-val">${c.ex.toFixed(2)} m³</span></div>
+            ${(vj>0.01&&ex>0.01)?`<div class="falt-row"><span class="falt-key" style="font-size:10px;color:var(--gray)">↳ viajes / extra</span><span class="falt-val" style="font-size:10px;color:var(--gray)">${vj.toFixed(2)} / ${ex.toFixed(2)}</span></div>`:''}
+            ${(ex>0.01&&vj<=0.01)?`<div class="falt-row"><span class="falt-key" style="font-size:10px;color:#7c3aed">↳ todo de convenio</span><span class="falt-val" style="font-size:10px;color:#7c3aed">sin viajes</span></div>`:''}
+            <div class="falt-row"><span class="falt-key">Faltante m³</span><span class="falt-val">${done?'0':fM3.toFixed(2)}</span></div>
+            <div class="falt-row"><span class="falt-key">Faltante ton</span><span class="falt-val">${done?'0':fTon.toFixed(1)}</span></div>
+            <div class="falt-row"><span class="falt-key">Viajes faltantes</span><span class="falt-val">${done?'✓':fVj+' viajes'}</span></div></div></div>`;
         }).join('')}
       </div>`,
     balanceDias: ()=> buildBalanceDias(allRecs),
