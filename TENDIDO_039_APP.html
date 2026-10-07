@@ -420,6 +420,17 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
     </div>
   </div>
 
+  <div id="depurarModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1001;align-items:center;justify-content:center;padding:14px">
+    <div class="sh" style="max-width:820px;width:100%;max-height:90vh;overflow-y:auto">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <h4 style="margin:0;color:var(--gold)">🧹 Depurar viajes</h4>
+        <button onclick="document.getElementById('depurarModal').style.display='none'" style="background:none;border:none;color:var(--muted);font-size:20px;cursor:pointer">✕</button>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:10px">Los viajes agrupados por concepto, como los cuenta el reporte. Abre un concepto, marca los viajes que no pertenecen ahí y mándalos al concepto correcto. Borrar es el último recurso: un viaje reclasificado conserva su volumen, uno borrado lo pierde.</div>
+      <div id="depurarBody"></div>
+    </div>
+  </div>
+
   <div id="normConceptosModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;align-items:center;justify-content:center;padding:14px">
     <div style="background:var(--card);border:1px solid var(--bord);border-radius:14px;max-width:640px;width:100%;max-height:88vh;overflow-y:auto;padding:16px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
@@ -1155,6 +1166,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
         <span style="font-weight:800">🔧 Normalizar</span><br>
         <span style="font-size:11px;color:var(--muted);font-weight:400">Corregir viajes viejos cuyo concepto no coincide con el catálogo actual</span>
       </button>
+      <button class="be" id="btnDepurar" onclick="abrirDepurador()" style="text-align:left;padding:14px;display:none">
+        <span style="font-weight:800">🧹 Depurar viajes</span><br>
+        <span style="font-size:11px;color:var(--muted);font-weight:400">Ver los viajes de cada concepto, reclasificar los que quedaron mal y borrar los que no deben estar</span>
+      </button>
       <button class="be" onclick="cerrarAjustes()" style="text-align:center;padding:12px;margin-top:8px;background:var(--gold);border-color:var(--gold);color:#1a1a1a;font-weight:800">💾 Guardar y cerrar pestaña</button>
     </div>
   </div>
@@ -1337,6 +1352,167 @@ window.aplicarNormalizacionConceptos=async function(){
   diagnosticarConceptos(); // vuelve a escanear para confirmar que ya no aparecen
 };
 
+
+// ═══ DEPURADOR DE VIAJES ═══
+// El normalizador de arriba solo ve conceptos cuyo id NO existe en el catálogo. Un viaje guardado
+// con un id válido pero EQUIVOCADO (p. ej. tendido de carpeta que quedó como BACHEO-O1) le pasa
+// desapercibido, y es justo el caso que descuadra el avance por concepto en el reporte.
+// Esto agrupa TODOS los viajes por el concepto con el que cuentan, para poder verlos y moverlos
+// al concepto correcto. Reclasificar conserva el volumen; borrar lo pierde — por eso lo primero
+// es lo que se ofrece, y borrar pide doble confirmación.
+let _depAbierto=null;      // key del concepto desplegado
+let _depSel=new Set();     // "recId|indiceDelConcepto" de lo seleccionado
+
+// Clave de concepto de cada partida de un viaje, con el MISMO criterio del reporte.
+function _depPartidas(r){
+  const out=[];
+  const cs=(r.conceptos&&r.conceptos.length)?r.conceptos:null;
+  if(cs){
+    cs.forEach((c,ix)=>{
+      const k=_canonKeyC(c.id,c.label,c.kde!=null?c.kde:r.kde);
+      out.push({k:k||'(sin concepto)', ix, vol:+(c.volumen||0), ton:+(c.ton||0),
+                carril:c.carril||r.carril||'', kde:c.kde!=null?c.kde:r.kde, esp:c.esp_teorico,
+                idRaw:c.id, labelRaw:c.label});
+    });
+  } else {
+    const k=_canonKeyC(r.id||r.concepto, r.concepto, r.kde);
+    out.push({k:k||'(sin concepto)', ix:-1, vol:+(r.volumen||0), ton:+(r.ton_recibidas||0),
+              carril:r.carril||'', kde:r.kde, esp:r.esp_teorico,
+              idRaw:r.id||r.concepto, labelRaw:r.concepto});
+  }
+  return out;
+}
+// Señales de captura dudosa — no son errores por sí solas, pero es donde suelen estar los viajes
+// que cayeron en el concepto equivocado.
+function _depAlertas(r,p){
+  const a=[];
+  if(!p.carril) a.push('sin carril');
+  if(p.kde==null||isNaN(p.kde)) a.push('sin cadenamiento');
+  if(!(p.ton>0) && !(r.ton_recibidas>0)) a.push('sin tonelaje');
+  if(!p.vol) a.push('sin volumen');
+  if(!getCatItem(p.idRaw)) a.push('id fuera del catálogo');
+  return a;
+}
+window.abrirDepurador=function(){
+  _depAbierto=null; _depSel.clear();
+  document.getElementById('depurarModal').style.display='flex';
+  renderDepurador();
+};
+window.depToggleCat=function(k){ _depAbierto=(_depAbierto===k)?null:k; _depSel.clear(); renderDepurador(); };
+window.depToggleSel=function(id){ if(_depSel.has(id)) _depSel.delete(id); else _depSel.add(id); renderDepurador(); };
+window.depSelTodos=function(){
+  const vis=(window._depVisibles||[]).map(x=>x.selId);
+  const todos=vis.length&&vis.every(i=>_depSel.has(i));
+  if(todos) vis.forEach(i=>_depSel.delete(i)); else vis.forEach(i=>_depSel.add(i));
+  renderDepurador();
+};
+function renderDepurador(){
+  const body=document.getElementById('depurarBody'); if(!body) return;
+  const recs=(recordsAll||[]).filter(r=>(r.obra||'039')===obraActiva && r.tipo!=='regreso' && r.tipo!=='cancelado');
+  const grupos={};
+  recs.forEach(r=>_depPartidas(r).forEach(p=>{
+    if(!grupos[p.k]) grupos[p.k]={k:p.k,n:0,vol:0,alertas:0,filas:[]};
+    const al=_depAlertas(r,p);
+    grupos[p.k].n++; grupos[p.k].vol+=p.vol; if(al.length) grupos[p.k].alertas++;
+    grupos[p.k].filas.push({r,p,al,selId:r._id+'|'+p.ix});
+  }));
+  const orden=['reniv','carp3','bach1','carp5','bach2'];
+  const keys=Object.keys(grupos).sort((a,b)=>{
+    const ia=orden.indexOf(a), ib=orden.indexOf(b);
+    return (ia<0?99:ia)-(ib<0?99:ib);
+  });
+  if(!keys.length){ body.innerHTML='<div style="font-size:12px;color:var(--muted)">No hay viajes en esta obra.</div>'; return; }
+
+  let html=keys.map(k=>{
+    const g=grupos[k], abierto=_depAbierto===k;
+    const lbl=_CANON_LBL[k]||k;
+    const meta=(catalogoActivo.find(c=>_canonKeyC(c.id,c.label)===k)||{}).cantidad;
+    return `<div style="border:1px solid ${abierto?'var(--gold)':'var(--bord)'};border-radius:10px;margin-bottom:8px;overflow:hidden">
+      <div onclick="depToggleCat('${k}')" style="padding:11px;cursor:pointer;background:var(--surf);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <div>
+          <div style="font-weight:800;font-size:13px">${lbl}</div>
+          <div style="font-size:11px;color:var(--muted)">${g.n} partida(s) · ${g.vol.toFixed(2)} m³${meta?' · meta '+meta+' m³':''}${g.alertas?` · <span style="color:var(--gold)">${g.alertas} con aviso</span>`:''}</div>
+        </div>
+        <span style="color:var(--gold);font-size:12px">${abierto?'▲':'▼'}</span>
+      </div>`
+      + (abierto?_depRenderFilas(g):'')
+      + `</div>`;
+  }).join('');
+  body.innerHTML=html;
+}
+function _depRenderFilas(g){
+  const filas=[...g.filas].sort((a,b)=>String(a.r.fecha||'').localeCompare(String(b.r.fecha||'')));
+  window._depVisibles=filas;
+  const nSel=filas.filter(f=>_depSel.has(f.selId)).length;
+  const todos=filas.length&&filas.every(f=>_depSel.has(f.selId));
+  const opciones=catalogoActivo.filter(c=>c.id!=='OTRO').map(c=>`<option value="${c.id}">${c.label}</option>`).join('');
+  return `<div style="padding:10px;border-top:1px solid var(--bord)">
+    <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
+        <input type="checkbox" ${todos?'checked':''} onchange="depSelTodos()" style="width:17px;height:17px"> Seleccionar los ${filas.length}
+      </label>
+      <span style="margin-left:auto;font-size:12px;font-weight:700;color:${nSel?'var(--gold)':'var(--muted)'}">${nSel} seleccionado(s)</span>
+    </div>
+    ${nSel?`<div style="background:rgba(212,160,23,.08);border:1px solid var(--bord);border-radius:8px;padding:9px;margin-bottom:8px">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Mover los ${nSel} seleccionado(s) al concepto correcto:</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <select id="depDestino" style="flex:1;min-width:170px;background:var(--bg);border:1px solid var(--bord);border-radius:6px;padding:8px;font-size:13px;color:var(--txt)">${opciones}</select>
+        <button onclick="depReclasificar()" style="background:var(--green);border:none;border-radius:6px;color:#0a0a0a;padding:8px 14px;font-size:13px;font-weight:800;cursor:pointer">↔ Reclasificar</button>
+      </div>
+      <button onclick="depBorrar()" style="width:100%;margin-top:6px;background:rgba(220,38,38,.12);border:1px solid #dc2626;color:#ef4444;border-radius:6px;padding:7px;font-size:12px;font-weight:700;cursor:pointer">🗑️ Borrar los ${nSel} viaje(s) completos</button>
+      <div style="font-size:10px;color:var(--muted);margin-top:5px">Reclasificar mueve el volumen al concepto correcto. Borrar elimina el viaje entero con su vale, remisión y fotos — y ese volumen ya no cuenta en ningún lado.</div>
+    </div>`:''}
+    ${filas.map(f=>{
+      const sel=_depSel.has(f.selId), r=f.r, p=f.p;
+      return `<div style="background:${sel?'rgba(212,160,23,.12)':'var(--bg)'};border:1px solid ${f.al.length?'var(--gold)':'var(--bord)'};border-radius:8px;padding:9px;margin-bottom:6px;display:flex;gap:9px;align-items:flex-start">
+        <input type="checkbox" ${sel?'checked':''} onchange="depToggleSel('${f.selId}')" style="width:18px;height:18px;flex:0 0 auto;margin-top:2px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:12px;font-weight:700">${r.fecha||'sin fecha'} · ${r.placas||'sin placas'} · <span style="color:var(--gold)">${p.vol.toFixed(2)} m³</span></div>
+          <div style="font-size:10px;color:var(--muted)">${p.labelRaw||p.idRaw||'—'}${p.carril?' · '+p.carril:''}${p.kde!=null&&!isNaN(p.kde)?' · km '+(typeof fmtCad==='function'?fmtCad(p.kde):p.kde):''}${p.esp?' · esp '+p.esp+'cm':''}${r.vale?' · V:'+r.vale:''}${r.capturado_por?' · '+r.capturado_por:''}</div>
+          ${f.al.length?`<div style="font-size:10px;color:var(--gold);margin-top:3px">⚠️ ${f.al.join(' · ')}</div>`:''}
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+window.depReclasificar=async function(){
+  const destino=(document.getElementById('depDestino')||{}).value;
+  const cat=getCatItem(destino);
+  if(!cat){ toast('Elige el concepto destino','err'); return; }
+  const sel=(window._depVisibles||[]).filter(f=>_depSel.has(f.selId));
+  if(!sel.length){ toast('No has seleccionado nada','err'); return; }
+  const vol=sel.reduce((s,f)=>s+f.p.vol,0);
+  if(!confirm(`Mover ${sel.length} partida(s) · ${vol.toFixed(2)} m³ a "${cat.label}".\n\nEl volumen no se pierde: deja de contar en el concepto actual y pasa a contar en el nuevo.\n\n¿Confirmas?`)) return;
+  let ok=0, err=0;
+  for(const f of sel){
+    try{
+      const r=f.r, patch={};
+      if(f.p.ix>=0 && r.conceptos && r.conceptos.length){
+        patch.conceptos=r.conceptos.map((c,i)=> i===f.p.ix ? {...c, id:cat.id, label:cat.label, codigo:cat.codigo||''} : c);
+      } else {
+        patch.id=cat.id; patch.concepto=cat.label;
+      }
+      await updateDoc(doc(db,COL,r._id), patch); ok++;
+    }catch(e){ err++; console.warn('reclasificar', f.selId, e); }
+  }
+  toast(`✓ ${ok} partida(s) reclasificada(s)`+(err?` · ${err} con error`:''), err?'warn':'ok');
+  _depSel.clear(); setTimeout(renderDepurador,400);
+};
+window.depBorrar=async function(){
+  const sel=(window._depVisibles||[]).filter(f=>_depSel.has(f.selId));
+  if(!sel.length){ toast('No has seleccionado nada','err'); return; }
+  const ids=[...new Set(sel.map(f=>f.r._id))];
+  const vol=sel.reduce((s,f)=>s+f.p.vol,0);
+  if(!confirm(`⚠️ Vas a BORRAR ${ids.length} viaje(s) completo(s) · ${vol.toFixed(2)} m³.\n\nSe pierde el viaje entero: vale, remisión, tonelaje y fotos. Ese volumen deja de existir en la obra.\n\nSi el material SÍ se tendió y solo quedó en el concepto equivocado, usa Reclasificar en vez de borrar.\n\n¿Continuar?`)) return;
+  if(!confirm(`Última confirmación: se borran ${ids.length} viaje(s) de forma permanente.`)) return;
+  let ok=0, err=0;
+  for(const id of ids){
+    try{ await deleteDoc(doc(db,COL,id)); ok++; }catch(e){ err++; console.warn('borrar', id, e); }
+  }
+  toast(`✓ ${ok} viaje(s) borrado(s)`+(err?` · ${err} con error`:''), err?'warn':'ok');
+  _depSel.clear(); setTimeout(renderDepurador,400);
+};
+
 // ═══ MULTI-OBRA (Etapa 1: selector + se guarda la obra en cada viaje; NO filtra todavía) ═══
 const OBRA_DEFAULT={ clave:'039', nombre:'TENDIDO 039 · N-27', conceptos:CATALOGO_E7 };
 function cargarObras(){
@@ -1402,6 +1578,8 @@ function aplicarObraActiva(){
   if(bc) bc.style.display = (_sess && _sess.rol==='admin') ? '' : 'none';
   const bn=document.getElementById('btnNormConceptos');
   if(bn) bn.style.display = (_sess && _sess.rol==='admin') ? '' : 'none';
+  const bd=document.getElementById('btnDepurar');
+  if(bd) bd.style.display = (_sess && _sess.rol==='admin') ? '' : 'none';
   const vt=document.getElementById('viajesToolbar');
   if(vt) vt.style.display = (_sess && _sess.rol==='admin') ? '' : 'none';
   // Maquinaria: versión oficial, abierta a quien captura en campo (admin y residente). Antes
