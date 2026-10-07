@@ -4162,6 +4162,10 @@ function renderGraficoTiro(rs, esVistaTotal){
   const segs=[];
   const sinCarril=[];
   rs.forEach(v=>{
+    // Los cancelados y los que regresaron cargados no colocaron material: no llevan carril por
+    // diseño. Si se cuentan aquí, el aviso de "carril no reconocido" se llena de ellos y tapa los
+    // errores de captura de verdad.
+    if(v.tipo==='cancelado' || v.tipo==='regreso') return;
     const cs=(v.conceptos&&v.conceptos.length)?v.conceptos:[{kde:v.kde,ka:v.ka,carril:v.carril,label:v.concepto,id:v.concepto,ton:v.ton_recibidas,volumen:v.volumen,area:v.area,esp_teorico:v.esp_teorico,ancho:v.ancho}];
     cs.forEach(c=>{
       if(c.kde!=null&&c.ka!=null){
@@ -4208,6 +4212,15 @@ function renderGraficoTiro(rs, esVistaTotal){
   let bodyS=''; if(o1.length) bodyS+=_larguilloVista(o1,'OBRA 1 · MEX-200','O1','sup'); if(o2.length) bodyS+=_larguilloVista(o2,'OBRA 2 · MEX-80','O2','sup');
   let bodyC=''; if(o1.length) bodyC+=_larguilloVista(o1,'OBRA 1 · MEX-200','O1','cli'); if(o2.length) bodyC+=_larguilloVista(o2,'OBRA 2 · MEX-80','O2','cli');
 
+  // Traslapes: dos viajes del mismo día y carril tendiendo sobre el mismo tramo. Antes solo se
+  // veían picando "🔎 Revisar traslapes", así que pasaban semanas sin que nadie los notara. Un
+  // traslape casi siempre significa un cadenamiento mal capturado, y deja un hueco en otro lado.
+  let avisoTraslape='';
+  try{
+    const tr=_calcTraslapes(rs);
+    if(tr.length) avisoTraslape=`<div style="font-size:10.5px;color:#b8830f;background:rgba(240,180,41,.1);border:1px solid var(--gold);border-radius:8px;padding:7px 9px;margin-top:6px"><b>⚠️ ${tr.length} traslape(s) de carpeta</b> — dos viajes tendiendo sobre el mismo tramo. Suele ser un cadenamiento mal capturado:<br>${tr.slice(0,6).map(x=>'· '+x).join('<br>')}${tr.length>6?'<br>…':''}</div>`;
+  }catch(e){}
+
   const avisoCarril = sinCarril.length
     ? `<div style="font-size:10.5px;color:#dc2626;background:rgba(220,38,38,.08);border:1px solid rgba(220,38,38,.3);border-radius:8px;padding:7px 9px;margin-top:6px">⚠️ ${sinCarril.length} viaje(s) NO se grafican por carril no reconocido (corrige el carril en la tabla): ${sinCarril.slice(0,10).join(' · ')}${sinCarril.length>10?' …':''}</div>`
     : '';
@@ -4219,7 +4232,8 @@ function renderGraficoTiro(rs, esVistaTotal){
     ${_avanceHeaderHtml(av)}
     ${bodyS||msgVacio}
     ${_tablaVolConcepto(o1,o2,'sup')}
-    ${avisoCarril}`;
+    ${avisoCarril}
+    ${avisoTraslape}`;
 
   elC.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
       <span style="font-size:11px;font-weight:800;color:#3b82f6">🏗️ GRÁFICO CLIENTE · volumen real instalado</span>
@@ -4228,7 +4242,8 @@ function renderGraficoTiro(rs, esVistaTotal){
     ${_avanceHeaderHtml(av)}
     ${bodyC||msgVacio}
     ${_tablaVolConcepto(o1,o2,'cli')}
-    ${avisoCarril}`;
+    ${avisoCarril}
+    ${avisoTraslape}`;
 
   tiroVista(_tiroVista); // mostrar solo el gráfico elegido
 }
