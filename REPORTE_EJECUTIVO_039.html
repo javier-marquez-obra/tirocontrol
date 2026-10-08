@@ -1069,8 +1069,26 @@ function p039_estAutorizada(e){ return !!(e.autorizada || e.cerrada); }
 // manual para que el recálculo avise antes de pisarla.
 window.p039_setLinea=async function(estId, key, campo, valor){
   const est=_p039_estimaciones.find(e=>e.id===estId); if(!est) return;
-  if(p039_estAutorizada(est)){ alert('Estimación autorizada — reábrela con tu clave para poder corregirla.'); renderCostos(); return; }
+  if(p039_estAutorizada(est)){ alert('Estimación autorizada — reábrela para poder corregirla.'); renderCostos(); return; }
   const v=p039_evalFormula(valor).valor;
+  // Aviso al capturar una cantidad que hace que el ACUMULADO del concepto pase del volumen de
+  // catálogo. No lo impide —con un particular puede haber ampliación— pero obliga a decidirlo.
+  if(campo==='cantidad'){
+    const c=p039_catalogoEfectivo().find(x=>x.key===key);
+    const vc=c?p039_num(c.volContrato):0;
+    if(vc>0){
+      let otros=0;
+      _p039_estimaciones.forEach(e=>{ if(e.id===estId) return;
+        (e.lineas||[]).forEach(l=>{ if(l.key===key) otros+=p039_num(l.cantidad); }); });
+      const nuevoAcum=otros+p039_num(v), exceso=nuevoAcum-vc;
+      if(exceso>0.01){
+        const u=(c.unidad||'m³');
+        if(!confirm(`⚠️ ${c.label}\n\nCon ${p039_num(v).toFixed(2)} ${u} en este corte, el acumulado queda en ${nuevoAcum.toFixed(2)} ${u} y el contrato es de ${vc.toFixed(2)} ${u}.\n\nTe pasas ${exceso.toFixed(2)} ${u} (${p039_money(exceso*p039_num(c.pu))}).\n\nPara SICT ese tope se respeta; con un particular puede haber ampliación.\n\n¿Lo dejo así de todas formas?`)){
+          renderCostos(); return;
+        }
+      }
+    }
+  }
   const lineas=(est.lineas||[]).map(l=>{
     if(l.key!==key) return l;
     const n={...l, [campo]:v, manual:true};
@@ -1085,6 +1103,14 @@ window.p039_setLinea=async function(estId, key, campo, valor){
 window.p039_autorizarEst=async function(id){
   const est=_p039_estimaciones.find(e=>e.id===id); if(!est) return;
   const conClave=!!_p039_config.claveAutorizacion;
+  // Repaso final: qué conceptos quedan por encima del contrato con este corte dentro.
+  const exc=[];
+  p039_catalogoEfectivo().forEach(c=>{
+    const vc=p039_num(c.volContrato); if(vc<=0) return;
+    let ac=0; _p039_estimaciones.forEach(e=>{ (e.lineas||[]).forEach(l=>{ if(l.key===c.key) ac+=p039_num(l.cantidad); }); });
+    if(ac-vc>0.01) exc.push(`• ${c.label}: ${ac.toFixed(2)} de ${vc.toFixed(2)} ${c.unidad||'m³'} (+${(ac-vc).toFixed(2)})`);
+  });
+  if(exc.length && !confirm('⚠️ Con esta estimación, el acumulado PASA del contrato en:\n\n'+exc.join('\n')+'\n\nPara SICT el volumen de catálogo se respeta; esto necesitaría convenio de ampliación.\n\n¿Autorizar de todas formas?')) return;
   if(!confirm('Vas a AUTORIZAR la estimación '+est.numero+' por '+p039_money(p039_totalEstimacion(est))+'.\n\nQueda congelada: no se recalcula ni se edita, aunque después corrijas viajes de ese rango.\n\nPara moverla vas a tener que reabrirla'+(conClave?' con tu clave':'')+'.\n\n¿Autorizar?')) return;
   const ok=await guardarP039('estimaciones', _p039_estimaciones.map(e=>e.id===id
     ? {...e, autorizada:true, cerrada:true, autorizadaEn:new Date().toISOString()} : e));
@@ -1553,9 +1579,14 @@ function _p039RenderGenerador(){
           <div style="font-size:16px;font-weight:700">${p039_money(totalContrato)}</div></div>
       </div>
       <div style="background:var(--gray2);border-radius:6px;height:10px;margin-top:10px;overflow:hidden">
-        <div style="background:var(--gold);height:100%;width:${Math.min(100,pctCobrado).toFixed(1)}%"></div>
+        <div style="background:${cobradoTotal>totalContrato+0.01?'#dc2626':'var(--gold)'};height:100%;width:${Math.min(100,pctCobrado).toFixed(1)}%"></div>
       </div>
-      <div style="font-size:11px;color:var(--gray);margin-top:6px">${pctCobrado.toFixed(1)}% del contrato estimado · ${_p039_estimaciones.length} estimación(es) · falta ${p039_money(Math.max(0,totalContrato-cobradoTotal))}</div>
+      <!-- Antes decía "falta $0.00" cuando el acumulado PASABA del contrato, porque el resultado
+           negativo se recortaba con Math.max(0,...). Justo el caso que hay que ver se escondía. -->
+      <div style="font-size:11px;color:var(--gray);margin-top:6px">${pctCobrado.toFixed(1)}% del contrato estimado · ${_p039_estimaciones.length} estimación(es) · ${
+        cobradoTotal>totalContrato+0.01
+          ? `<b style="color:#dc2626">⚠️ se pasó ${p039_money(cobradoTotal-totalContrato)} del contrato</b>`
+          : `falta ${p039_money(totalContrato-cobradoTotal)}`}</div>
     </div>
   </div>`;
 
@@ -1568,13 +1599,24 @@ function _p039RenderGenerador(){
     const orden=[..._p039_estimaciones].sort((a2,b2)=>p039_num(b2.numero)-p039_num(a2.numero));
     return orden.find(e=>!p039_estAutorizada(e)) || orden[0] || null;
   })();
-  const _enEsta={};
-  if(_estActual) (_estActual.lineas||[]).forEach(l=>{ _enEsta[l.key]=p039_num(l.cantidad); });
+  // Se reparte el acumulado en TRES por número de estimación: lo de antes, lo de ésta y lo de las
+  // posteriores. Antes se calculaba "antes = todo − ésta", y si estabas parado en la #1 con una #2
+  // y una #3 capturadas, esas se sumaban a "cobrado antes del #1" — imposible.
+  const _enEsta={}, _antesDe={}, _despuesDe={};
+  cat.forEach(c=>{ _enEsta[c.key]=0; _antesDe[c.key]=0; _despuesDe[c.key]=0; });
+  const _numAct=_estActual?p039_num(_estActual.numero):null;
+  _p039_estimaciones.forEach(e=>{
+    const n=p039_num(e.numero);
+    const destino = (_estActual && e.id===_estActual.id) ? _enEsta
+                  : (_numAct!=null && n<_numAct) ? _antesDe : _despuesDe;
+    (e.lineas||[]).forEach(l=>{ if(destino[l.key]!=null) destino[l.key]+=p039_num(l.cantidad); });
+  });
   const filasCat=cat.map(c=>{
     const vc=p039_num(c.volContrato), pu=p039_num(c.pu), ac=acumTotal[c.key]||0;
     const saldo=vc-ac, pct=vc>0?(ac/vc*100):0;
     const esta=_enEsta[c.key]||0;        // lo que se cobra en el corte en curso
-    const antes=ac-esta;                 // lo ya cobrado en estimaciones anteriores
+    const antes=_antesDe[c.key]||0;      // estimaciones con número MENOR al actual
+    const despues=_despuesDe[c.key]||0;  // cortes posteriores ya capturados (si los hay)
     const u=c.unidad||'m³';
     const dato=(lbl,val,color,fuerte)=>`<div style="flex:1 1 110px;min-width:96px">
         <div style="font-size:9px;color:var(--gray);text-transform:uppercase;letter-spacing:.04em">${lbl}</div>
@@ -1595,6 +1637,7 @@ function _p039RenderGenerador(){
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:9px;padding-top:8px;border-top:1px solid var(--gray2)">
         ${dato('Cobrado antes', antes.toFixed(2)+' '+u, 'var(--gray)')}
         ${dato(_estActual?('En esta estimación'+(_estActual.numero?' #'+_estActual.numero:'')):'En esta estimación', esta.toFixed(2)+' '+u, esta>0?'#7c3aed':'var(--gray)', true)}
+        ${despues>0?dato('En cortes posteriores', despues.toFixed(2)+' '+u, 'var(--gray)'):''}
         ${dato('Por cobrar', saldo.toFixed(2)+' '+u, saldo<-0.01?'#dc2626':(saldo<0.01?'var(--green)':'var(--txt)'), true)}
         ${dato('Total contrato', vc.toFixed(2)+' '+u, 'var(--gray)')}
       </div>
@@ -1602,6 +1645,7 @@ function _p039RenderGenerador(){
         <div style="height:6px;background:var(--gray2);border-radius:99px;overflow:hidden;display:flex">
           <div style="width:${Math.max(0,Math.min(100,vc>0?antes/vc*100:0))}%;background:#94a3b8"></div>
           <div style="width:${Math.max(0,Math.min(100,vc>0?esta/vc*100:0))}%;background:#7c3aed"></div>
+          <div style="width:${Math.max(0,Math.min(100,vc>0?despues/vc*100:0))}%;background:#c4b5fd"></div>
         </div>
         <div style="font-size:9.5px;color:var(--gray);margin-top:3px">${pct.toFixed(1)}% del contrato estimado${saldo<-0.01?' · <b style="color:#dc2626">se pasó '+Math.abs(saldo).toFixed(2)+' '+u+' del contrato</b>':''}</div>
       </div>
