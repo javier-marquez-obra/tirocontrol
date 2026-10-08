@@ -1211,6 +1211,18 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
 <script type="module">
+// ═══ SACAR LOS MODALES DEL ENCABEZADO ═══
+// Los modales (Carriles, Camiones, Catálogo, Normalizar, Depurar, Equipo…) están escritos dentro
+// del <div id="fullHeader">. Al entrar a cualquier pestaña, _entrarModoEnfocado() le pone
+// display:none a ese header para darle toda la pantalla al contenido — y con él desaparecen los
+// modales, aunque estén "abiertos": display:none en un padre mata todo el subárbol, por encima de
+// cualquier z-index. Síntoma: le picabas a "Depurar viajes" y no pasaba nada, hasta que le dabas
+// a "← Regresar" y entonces sí aparecía la ventana, que llevaba rato abierta ahí escondida.
+// Se mueven a <body> al arrancar. Se accede a todos por id, así que mover el nodo no rompe nada.
+(function _sacarModalesDelHeader(){
+  const fh=document.getElementById('fullHeader'); if(!fh) return;
+  fh.querySelectorAll('[id$="Modal"], .ov, .lightbox').forEach(m=>document.body.appendChild(m));
+})();
 // ═══ REDONDEO IGUAL QUE EXCEL ═══
 // JavaScript redondea sobre la representación BINARIA del número; Excel lo hace sobre el valor
 // DECIMAL. Por eso (8.575).toFixed(2) daba 8.57 mientras Excel da 8.58 — de ahí salían las
@@ -1366,6 +1378,7 @@ window.aplicarNormalizacionConceptos=async function(){
 // es lo que se ofrece, y borrar pide doble confirmación.
 let _depAbierto=null;      // key del concepto desplegado
 let _depSel=new Set();     // "recId|indiceDelConcepto" de lo seleccionado
+let _depQ='';              // texto del buscador dentro del concepto desplegado
 
 // Clave de concepto de cada partida de un viaje, con el MISMO criterio del reporte.
 function _depPartidas(r){
@@ -1437,11 +1450,18 @@ function _depAlertas(r,p){
   return a;
 }
 window.abrirDepurador=function(){
-  _depAbierto=null; _depSel.clear();
+  _depAbierto=null; _depSel.clear(); _depQ='';
   document.getElementById('depurarModal').style.display='flex';
   renderDepurador();
 };
-window.depToggleCat=function(k){ _depAbierto=(_depAbierto===k)?null:k; _depSel.clear(); renderDepurador(); };
+window.depToggleCat=function(k){ _depAbierto=(_depAbierto===k)?null:k; _depSel.clear(); _depQ=''; renderDepurador(); };
+// Al teclear se repinta la lista; hay que devolverle el foco y el cursor al buscador, si no se
+// pierde en cada letra y hay que volver a picarle para seguir escribiendo.
+window.depBuscarInput=function(v){
+  _depQ=v; renderDepurador();
+  const el=document.getElementById('depBuscar');
+  if(el){ el.focus(); el.setSelectionRange(el.value.length,el.value.length); }
+};
 window.depToggleSel=function(id){ if(_depSel.has(id)) _depSel.delete(id); else _depSel.add(id); renderDepurador(); };
 window.depSelTodos=function(){
   const vis=(window._depVisibles||[]).map(x=>x.selId);
@@ -1485,18 +1505,35 @@ function renderDepurador(){
   body.innerHTML=html;
 }
 function _depRenderFilas(g){
-  const filas=[...g.filas].sort((a,b)=>String(a.r.fecha||'').localeCompare(String(b.r.fecha||'')));
+  const todasFilas=[...g.filas].sort((a,b)=>String(a.r.fecha||'').localeCompare(String(b.r.fecha||'')));
+  // Un concepto puede traer 400+ partidas; sin buscador, hallar un viaje concreto es scroll ciego.
+  // Busca en fecha, placas, carril, km, vale, remisión, capturista y concepto, por palabras sueltas
+  // y en cualquier orden: "13-06 JR10345" encuentra igual que "jr10345 2026-06-13".
+  const q=(_depQ||'').trim().toLowerCase();
+  const filas=!q?todasFilas:todasFilas.filter(f=>{
+    const r=f.r,p=f.p;
+    const heno=[r.fecha,r.placas,p.carril,p.labelRaw,p.idRaw,r.vale,r.remision,r.capturado_por,
+      (p.kde!=null&&!isNaN(p.kde))?(typeof fmtCad==='function'?fmtCad(p.kde):p.kde):'',p.kde]
+      .join(' ').toLowerCase().replace(/[+·.:\-]/g,' ');
+    // Se tiran los trozos de una sola letra: así "V:726" o "R:7155" (como se ven en la ficha)
+    // buscan por el número y no fallan por la V o la R sueltas, que no están en el dato.
+    return q.replace(/[+·.:\-]/g,' ').split(/\s+/).filter(t=>t.length>1).every(t=>heno.indexOf(t)>=0);
+  });
   window._depVisibles=filas;
   const nSel=filas.filter(f=>_depSel.has(f.selId)).length;
   const todos=filas.length&&filas.every(f=>_depSel.has(f.selId));
   const opciones=catalogoActivo.filter(c=>c.id!=='OTRO').map(c=>`<option value="${c.id}">${c.label}</option>`).join('');
   return `<div style="padding:10px;border-top:1px solid var(--bord)">
+    <input id="depBuscar" value="${(_depQ||'').replace(/"/g,'&quot;')}" oninput="depBuscarInput(this.value)" placeholder="🔎 Buscar: fecha, placas, carril, km, vale…"
+      style="width:100%;box-sizing:border-box;min-height:40px;background:var(--bg);border:1px solid var(--bord);color:var(--txt);border-radius:8px;padding:9px 11px;font-size:13px;margin-bottom:8px">
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
       <label style="display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer">
-        <input type="checkbox" ${todos?'checked':''} onchange="depSelTodos()" style="width:17px;height:17px"> Seleccionar los ${filas.length}
+        <input type="checkbox" ${todos?'checked':''} onchange="depSelTodos()" style="width:17px;height:17px"> Seleccionar ${q?`los ${filas.length} del filtro`:`los ${filas.length}`}
       </label>
+      ${q?`<button onclick="depBuscarInput('')" style="background:none;border:1px solid var(--bord);color:var(--muted);border-radius:6px;padding:4px 9px;font-size:11px;cursor:pointer">✕ Quitar filtro (${todasFilas.length} en total)</button>`:''}
       <span style="margin-left:auto;font-size:12px;font-weight:700;color:${nSel?'var(--gold)':'var(--muted)'}">${nSel} seleccionado(s)</span>
     </div>
+    ${q&&!filas.length?`<div style="font-size:12px;color:var(--muted);padding:12px 2px">Nada coincide con “${q}”.</div>`:''}
     ${nSel?`<div style="background:rgba(212,160,23,.08);border:1px solid var(--bord);border-radius:8px;padding:9px;margin-bottom:8px">
       <div style="font-size:11px;color:var(--muted);margin-bottom:6px">Mover los ${nSel} seleccionado(s) al concepto correcto:</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
