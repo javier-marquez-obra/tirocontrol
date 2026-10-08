@@ -89,8 +89,14 @@ html,body{background:var(--bg);color:var(--txt);font-family:'Inter',sans-serif;f
 .sec.cerrada>.section-hdr{opacity:.72;margin-bottom:2px}
 .sec.cerrada>.section-hdr .sec-chip{display:inline-flex}
 .sec-chip{display:none;font-size:9px;font-weight:700;color:var(--gray);border:1px solid var(--gray2);border-radius:99px;padding:1px 7px;letter-spacing:.04em;text-transform:none}
-/* Al imprimir no se esconde nada: el PDF siempre sale completo. */
-@media print{ .sec.cerrada>:not(.section-hdr){display:revert !important} .sec>.section-hdr::before{content:''} }
+/* Al imprimir se RESPETA lo recogido: así el PDF sale con puras gráficas cuando así lo dejaste.
+   Para imprimir todo hay un botón aparte que abre las secciones, imprime y las vuelve a dejar
+   como estaban — explícito, en vez de que el PDF y la pantalla digan cosas distintas sin avisar. */
+@media print{
+  .sec>.section-hdr::before{content:''}
+  .sec.cerrada{display:none}          /* recogida = fuera del PDF, incluido su título */
+  .noprint{display:none !important}
+}
 
 /* ── KPI GRID ── */
 .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
@@ -954,7 +960,7 @@ window.p039_editarRenglon=function(id){
 window.p039_cancelarForm=function(){ _p039_form=null; renderCostos(); };
 window.p039_setCampo=function(campo,valor){ if(!_p039_form) return; _p039_form[campo]=valor;
   if(campo==='categoria'){ if(!_p039_form.codigo) _p039_form.codigo=p039_siguienteCodigo(valor); }
-  renderCostos();
+  _conFoco(renderCostos);
 };
 window.p039_guardarRenglon=async function(){
   const f=_p039_form;
@@ -1021,7 +1027,7 @@ window.p039_nuevaEstimacion=function(){
   _p039_formEst={numero:String(sig), fechaIni:desde, fechaFin:'', incluirExtra:false};
   renderCostos();
 };
-window.p039_setFormEst=function(campo,valor){ if(!_p039_formEst) return; _p039_formEst[campo]=valor; renderCostos(); };
+window.p039_setFormEst=function(campo,valor){ if(!_p039_formEst) return; _p039_formEst[campo]=valor; _conFoco(renderCostos); };
 window.p039_cancelarEst=function(){ _p039_formEst=null; renderCostos(); };
 window.p039_guardarEstimacion=async function(){
   const f=_p039_formEst;
@@ -1154,6 +1160,25 @@ window.p039_setFecha=function(campo,v){ guardarP039('config', {..._p039_config, 
 function buildCostos(){
   return `<div class="section-hdr">💰 Costos — presupuesto y gastos de obra</div>
   <div id="costosRoot">${_p039Render()}</div>`;
+}
+// ═══ CONSERVAR EL FOCO AL REDIBUJAR ═══
+// Los campos de Costos/Estimaciones usan oninput, y oninput llamaba a renderCostos() en CADA
+// TECLA. Eso rehace todo el HTML: el <input> en el que estás escribiendo se destruye y se vuelve
+// a crear, el navegador pierde el foco y el cursor, y las teclas que alcanzas a meter mientras
+// tanto se caen. Síntoma exacto: tecleas 1500 y queda 155.
+// Aquí se envuelve el repintado: antes se anota qué campo tenía el foco y dónde iba el cursor, y
+// después se devuelve tal cual. Cada input necesita un id estable para que esto funcione.
+function _conFoco(fn){
+  const el=document.activeElement;
+  const id=el&&el.id, ini=el&&el.selectionStart, fin=el&&el.selectionEnd;
+  fn();
+  if(!id) return;
+  const nuevo=document.getElementById(id);
+  if(!nuevo || nuevo===document.activeElement) return;
+  try{
+    nuevo.focus({preventScroll:true});
+    if(ini!=null && nuevo.setSelectionRange) nuevo.setSelectionRange(ini,fin);
+  }catch(e){}
 }
 function renderCostos(){
   const el=document.getElementById('costosRoot'); if(!el) return;
@@ -1310,21 +1335,21 @@ function _p039RenderForm(){
 
       <div style="display:flex;gap:10px;margin-bottom:10px">
         <div style="flex:1"><label style="font-size:11px;font-weight:700;color:var(--gray);display:block;margin-bottom:4px">Código</label>
-          <input value="${f.codigo||''}" oninput="p039_setCampo('codigo',this.value)" style="width:100%;padding:10px;border:1px solid var(--gray2);border-radius:8px"></div>
+          <input id="p039_f_codigo" value="${f.codigo||''}" oninput="p039_setCampo('codigo',this.value)" style="width:100%;padding:10px;border:1px solid var(--gray2);border-radius:8px"></div>
         <div style="flex:2"><label style="font-size:11px;font-weight:700;color:var(--gray);display:block;margin-bottom:4px">Descripción</label>
-          <input value="${f.descripcion||''}" oninput="p039_setCampo('descripcion',this.value)" style="width:100%;padding:10px;border:1px solid var(--gray2);border-radius:8px"></div>
+          <input id="p039_f_descripcion" value="${f.descripcion||''}" oninput="p039_setCampo('descripcion',this.value)" style="width:100%;padding:10px;border:1px solid var(--gray2);border-radius:8px"></div>
       </div>
 
       <div style="display:flex;gap:10px;margin-bottom:10px">
         <div style="flex:1"><label style="font-size:11px;font-weight:700;color:var(--gray);display:block;margin-bottom:4px">Unidad</label>
-          <input value="${f.unidad||''}" oninput="p039_setCampo('unidad',this.value)" style="width:100%;padding:10px;border:1px solid var(--gray2);border-radius:8px"></div>
+          <input id="p039_f_unidad" value="${f.unidad||''}" oninput="p039_setCampo('unidad',this.value)" style="width:100%;padding:10px;border:1px solid var(--gray2);border-radius:8px"></div>
         <div style="flex:1"><label style="font-size:11px;font-weight:700;color:var(--gray);display:block;margin-bottom:4px">Cantidad proyectada</label>
-          <input value="${f.cantidad||''}" oninput="p039_setCampo('cantidad',this.value)" placeholder="0 (o fórmula)" style="width:100%;padding:10px;border:1px solid var(--gray2);border-radius:8px;font-family:monospace"></div>
+          <input id="p039_f_cantidad" value="${f.cantidad||''}" oninput="p039_setCampo('cantidad',this.value)" placeholder="0 (o fórmula)" style="width:100%;padding:10px;border:1px solid var(--gray2);border-radius:8px;font-family:monospace"></div>
       </div>
 
       ${f.categoria!=='mano_obra'?`
       <label style="font-size:11px;font-weight:700;color:var(--gray);display:block;margin-bottom:4px">Precio unitario (puede ser fórmula, ej. "32000/30")</label>
-      <input value="${f.puTexto||''}" oninput="p039_setCampo('puTexto',this.value)" style="width:100%;padding:10px;border:1px solid ${(f.puTexto&&!evPu.valido)?'#dc2626':'var(--gray2)'};border-radius:8px;font-family:monospace;margin-bottom:${(f.puTexto&&evPu.esFormula&&evPu.valido)?'2px':'10px'}">
+      <input id="p039_f_puTexto" value="${f.puTexto||''}" oninput="p039_setCampo('puTexto',this.value)" style="width:100%;padding:10px;border:1px solid ${(f.puTexto&&!evPu.valido)?'#dc2626':'var(--gray2)'};border-radius:8px;font-family:monospace;margin-bottom:${(f.puTexto&&evPu.esFormula&&evPu.valido)?'2px':'10px'}">
       ${(f.puTexto&&evPu.esFormula&&evPu.valido)?`<div style="font-size:11px;color:#7c3aed;margin-bottom:10px">= ${p039_money(evPu.valor)}</div>`:''}
       `:''}
 
@@ -1332,24 +1357,24 @@ function _p039RenderForm(){
       <div style="background:var(--blue4);border-radius:8px;padding:12px;margin-bottom:10px">
         <div style="font-size:11px;font-weight:700;color:var(--blue);margin-bottom:8px">Precio unitario real — 4 partes</div>
         <label style="font-size:10px;color:var(--gray)">1. Precio base (salario/día)</label>
-        <input value="${f.moBase||''}" oninput="p039_setCampo('moBase',this.value)" style="width:100%;padding:8px;border:1px solid var(--gray2);border-radius:6px;margin-bottom:8px;font-family:monospace">
+        <input id="p039_f_moBase" value="${f.moBase||''}" oninput="p039_setCampo('moBase',this.value)" style="width:100%;padding:8px;border:1px solid var(--gray2);border-radius:6px;margin-bottom:8px;font-family:monospace">
         <label style="font-size:10px;color:var(--gray)">2. % de cargas sociales</label>
-        <input value="${f.moPctCargas||''}" oninput="p039_setCampo('moPctCargas',this.value)" style="width:100%;padding:8px;border:1px solid var(--gray2);border-radius:6px;margin-bottom:8px;font-family:monospace">
+        <input id="p039_f_moPctCargas" value="${f.moPctCargas||''}" oninput="p039_setCampo('moPctCargas',this.value)" style="width:100%;padding:8px;border:1px solid var(--gray2);border-radius:6px;margin-bottom:8px;font-family:monospace">
         <div style="display:flex;gap:8px;margin-bottom:8px">
-          <input value="${f.moHoraExtraCosto||''}" oninput="p039_setCampo('moHoraExtraCosto',this.value)" placeholder="$/hora extra" style="flex:1;padding:8px;border:1px solid var(--gray2);border-radius:6px;font-family:monospace">
-          <input value="${f.moHoraExtraCantidad||''}" oninput="p039_setCampo('moHoraExtraCantidad',this.value)" placeholder="hrs extra" style="flex:1;padding:8px;border:1px solid var(--gray2);border-radius:6px;font-family:monospace">
+          <input id="p039_f_moHoraExtraCosto" value="${f.moHoraExtraCosto||''}" oninput="p039_setCampo('moHoraExtraCosto',this.value)" placeholder="$/hora extra" style="flex:1;padding:8px;border:1px solid var(--gray2);border-radius:6px;font-family:monospace">
+          <input id="p039_f_moHoraExtraCantidad" value="${f.moHoraExtraCantidad||''}" oninput="p039_setCampo('moHoraExtraCantidad',this.value)" placeholder="hrs extra" style="flex:1;padding:8px;border:1px solid var(--gray2);border-radius:6px;font-family:monospace">
         </div>
         <label style="font-size:10px;color:var(--gray)">Viáticos por día</label>
-        <input value="${f.moViaticos||''}" oninput="p039_setCampo('moViaticos',this.value)" style="width:100%;padding:8px;border:1px solid var(--gray2);border-radius:6px;font-family:monospace">
+        <input id="p039_f_moViaticos" value="${f.moViaticos||''}" oninput="p039_setCampo('moViaticos',this.value)" style="width:100%;padding:8px;border:1px solid var(--gray2);border-radius:6px;font-family:monospace">
         <div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--gray2);text-align:right;font-weight:800;color:var(--green)">= ${p039_money(p039_calcularPUManoObra(f))}/día</div>
       </div>
       <label style="font-size:11px;font-weight:700;color:var(--gray);display:block;margin-bottom:4px">Días que va a trabajar</label>
-      <input value="${f.diasDuracion||''}" oninput="p039_setCampo('diasDuracion',this.value)" placeholder="ej. 90" style="width:100%;padding:10px;border:1px solid var(--gray2);border-radius:8px;margin-bottom:10px;font-family:monospace">
+      <input id="p039_f_diasDuracion" value="${f.diasDuracion||''}" oninput="p039_setCampo('diasDuracion',this.value)" placeholder="ej. 90" style="width:100%;padding:10px;border:1px solid var(--gray2);border-radius:8px;margin-bottom:10px;font-family:monospace">
       `:''}
 
       ${f.categoria==='maquinaria'?`
       <label style="font-size:11px;font-weight:700;color:var(--gray);display:block;margin-bottom:4px">Litros de combustible por día (opcional — se cobra aparte, automático)</label>
-      <input value="${f.litrosPorDia||''}" oninput="p039_setCampo('litrosPorDia',this.value)" placeholder="ej. 80" style="width:100%;padding:10px;border:1px solid var(--gray2);border-radius:8px;margin-bottom:10px;font-family:monospace">
+      <input id="p039_f_litrosPorDia" value="${f.litrosPorDia||''}" oninput="p039_setCampo('litrosPorDia',this.value)" placeholder="ej. 80" style="width:100%;padding:10px;border:1px solid var(--gray2);border-radius:8px;margin-bottom:10px;font-family:monospace">
       `:''}
 
       <div style="display:flex;gap:8px;margin-top:8px">
@@ -1500,14 +1525,14 @@ function _p039RenderGenerador(){
       <div class="card-body">
         <div style="display:grid;grid-template-columns:80px 1fr 1fr;gap:8px;margin-bottom:10px">
           <div><label style="font-size:10px;color:var(--gray)">N°</label>
-            <input value="${f.numero}" oninput="p039_setFormEst('numero',this.value)" style="width:100%;padding:8px;border:1px solid var(--gray2);border-radius:6px;font-family:monospace"></div>
+            <input id="p039_fe_numero" value="${f.numero}" oninput="p039_setFormEst('numero',this.value)" style="width:100%;padding:8px;border:1px solid var(--gray2);border-radius:6px;font-family:monospace"></div>
           <div><label style="font-size:10px;color:var(--gray)">Del</label>
-            <input type="date" value="${f.fechaIni||''}" onchange="p039_setFormEst('fechaIni',this.value)" style="width:100%;padding:8px;border:1px solid var(--gray2);border-radius:6px"></div>
+            <input id="p039_fe_fechaIni" type="date" value="${f.fechaIni||''}" onchange="p039_setFormEst('fechaIni',this.value)" style="width:100%;padding:8px;border:1px solid var(--gray2);border-radius:6px"></div>
           <div><label style="font-size:10px;color:var(--gray)">Al</label>
-            <input type="date" value="${f.fechaFin||''}" onchange="p039_setFormEst('fechaFin',this.value)" style="width:100%;padding:8px;border:1px solid var(--gray2);border-radius:6px"></div>
+            <input id="p039_fe_fechaFin" type="date" value="${f.fechaFin||''}" onchange="p039_setFormEst('fechaFin',this.value)" style="width:100%;padding:8px;border:1px solid var(--gray2);border-radius:6px"></div>
         </div>
         <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:10px;cursor:pointer">
-          <input type="checkbox" ${f.incluirExtra?'checked':''} onchange="p039_setFormEst('incluirExtra',this.checked)">
+          <input id="p039_fe_incluirExtra" type="checkbox" ${f.incluirExtra?'checked':''} onchange="p039_setFormEst('incluirExtra',this.checked)">
           <span>Incluir volumen extra importado por Excel (reniv/bacheo sin viaje)</span>
         </label>
         ${f.incluirExtra?`<div style="font-size:10px;color:#7c3aed;background:#f5f3ff;border-radius:6px;padding:8px;margin-bottom:10px">El volumen extra no trae fecha propia, así que entra COMPLETO en esta estimación sin importar el rango. Normalmente se marca solo en un corte, para no cobrarlo dos veces.</div>`:''}
@@ -1537,35 +1562,47 @@ function _p039RenderGenerador(){
     const detalle=abierta?`<div class="card-body" style="border-top:1px solid var(--gray2)">
       ${aut?`<div style="background:#ecfdf5;border:1px solid #059669;border-radius:6px;padding:8px;margin-bottom:10px;font-size:11px;color:#065f46">
         🔒 Autorizada${e.autorizadaEn?' el '+e.autorizadaEn.slice(0,10):''} — congelada. Para corregirla necesitas tu clave.</div>`
-       :`<div style="font-size:11px;color:var(--gray);margin-bottom:10px">✏️ Abierta — puedes editar cantidades y precios a mano, o recalcular desde los viajes. Cuando ya esté como la vas a presentar, autorízala.</div>`}
+       :`<div style="font-size:11px;color:var(--gray);margin-bottom:10px">✏️ Abierta — concepto, unidad, código SCT y precio salen del catálogo: <b>lo único que capturas es la cantidad</b> (columna morada). La columna <b>Por cobrar</b> te dice cuánto queda de contrato en ese renglón; si te pasas, se marca en rojo. Cuando ya esté como la vas a presentar, autorízala.</div>`}
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:11px">
           <thead><tr style="background:var(--surf)">
             <th style="padding:6px;text-align:left">Concepto</th>
+            <th style="padding:6px;text-align:center">Unidad</th>
             <th style="padding:6px;text-align:right">Anterior</th>
-            <th style="padding:6px;text-align:right">Este corte</th>
+            <th style="padding:6px;text-align:right;color:#7c3aed">Este corte ✏️</th>
             <th style="padding:6px;text-align:right">Acumulado</th>
+            <th style="padding:6px;text-align:right">Contrato</th>
+            <th style="padding:6px;text-align:right">Por cobrar</th>
             <th style="padding:6px;text-align:right">P.U.</th>
             <th style="padding:6px;text-align:right">Importe</th>
           </tr></thead>
           <tbody>
           ${(e.lineas||[]).map(l=>{
             const ant=anterior[l.key]||0, act=p039_num(l.cantidad);
+            // Concepto, unidad, precio y código vienen del catálogo: no hay que escribirlos.
+            // Lo único que se captura es la CANTIDAD de este corte, y por eso su campo va marcado.
+            const cat=(p039_catalogoEfectivo().find(c=>c.key===l.key))||{};
+            const meta=p039_num(cat.cantidad);
+            const porCobrar=meta>0?(meta-ant-act):null;
+            const excede=porCobrar!=null && porCobrar<-0.01;
             const celda=(campo,val)=>aut
               ? `<span style="font-family:monospace">${campo==='pu'?p039_money(val):p039_num(val).toFixed(2)}</span>`
-              : `<input value="${p039_num(val)}" onchange="p039_setLinea('${e.id}','${l.key}','${campo}',this.value)" style="width:${campo==='pu'?'88':'74'}px;padding:4px 6px;border:1px solid ${l.manual?'#b45309':'var(--gray2)'};border-radius:5px;font-family:monospace;font-size:11px;text-align:right">`;
+              : `<input id="p039_lin_${e.id}_${l.key}_${campo}" value="${p039_num(val)}" inputmode="decimal" onchange="p039_setLinea('${e.id}','${l.key}','${campo}',this.value)" style="width:${campo==='pu'?'92':'86'}px;padding:5px 7px;border:1px solid ${campo==='cantidad'?(excede?'#dc2626':'#7c3aed'):(l.manual?'#b45309':'var(--gray2)')};border-radius:5px;font-family:monospace;font-size:11.5px;text-align:right;${campo==='cantidad'?'background:#faf5ff;font-weight:700':''}">`;
             return `<tr style="border-bottom:1px solid var(--gray2)">
               <td style="padding:6px">${l.label}${l.codigoSCT?`<br><span style="font-size:9px;color:var(--gray);font-family:monospace">${l.codigoSCT}</span>`:''}${l.manual?'<br><span style="font-size:9px;color:#b45309">✏️ editado a mano</span>':''}</td>
+              <td style="padding:6px;text-align:center;color:var(--gray);font-size:10px">${l.unidad||'m³'}</td>
               <td style="padding:6px;text-align:right;color:var(--gray);font-family:monospace">${ant.toFixed(2)}</td>
               <td style="padding:6px;text-align:right">${celda('cantidad',l.cantidad)}</td>
               <td style="padding:6px;text-align:right;font-family:monospace">${(ant+act).toFixed(2)}</td>
+              <td style="padding:6px;text-align:right;color:var(--gray);font-family:monospace">${meta>0?meta.toFixed(2):'—'}</td>
+              <td style="padding:6px;text-align:right;font-family:monospace;color:${excede?'#dc2626':'var(--gray)'};font-weight:${excede?'700':'400'}">${porCobrar!=null?porCobrar.toFixed(2):'—'}${excede?' ⚠️':''}</td>
               <td style="padding:6px;text-align:right">${celda('pu',l.pu)}</td>
               <td style="padding:6px;text-align:right;font-weight:700;font-family:monospace">${p039_money(l.importe)}</td>
             </tr>`;
           }).join('')}
           </tbody>
           <tfoot><tr style="background:var(--surf);font-weight:800">
-            <td style="padding:6px" colspan="5">TOTAL</td>
+            <td style="padding:6px" colspan="8">TOTAL</td>
             <td style="padding:6px;text-align:right;color:var(--gold);font-family:monospace">${p039_money(total)}</td>
           </tr></tfoot>
         </table>
@@ -2528,6 +2565,18 @@ window._secTodas=function(cerrar){
     const k=sec.dataset.sec; _secEstado[k]=!!cerrar; sec.classList.toggle('cerrada', !!cerrar);
   });
   _secGuardar();
+};
+// Imprime tal cual está la pantalla: lo recogido NO entra al PDF. Es lo que se usa para sacar
+// la hoja de puras gráficas que se le enseña al cliente.
+window._imprimirComoSeVe=function(){ window.print(); };
+// Imprime TODO aunque en pantalla haya secciones recogidas: las abre, imprime, y las deja como
+// estaban. Así nunca hay que acordarse de reabrir a mano para sacar el reporte de trabajo.
+window._imprimirCompleto=function(){
+  const cerradas=[...document.querySelectorAll('#mainContent .sec.cerrada')];
+  cerradas.forEach(x=>x.classList.remove('cerrada'));
+  const restaurar=()=>{ cerradas.forEach(x=>x.classList.add('cerrada')); window.removeEventListener('afterprint',restaurar); };
+  window.addEventListener('afterprint',restaurar);
+  setTimeout(()=>{ window.print(); setTimeout(restaurar,1500); }, 120); // respaldo por si no llega afterprint
 };
 window._secSoloGraficas=function(){
   document.querySelectorAll('#mainContent .sec').forEach(sec=>{
@@ -3885,6 +3934,8 @@ function render(){
           <div style="display:flex;gap:4px">
             <button class="f-chip" id="gtd-dia" onclick="setGranTon('dia')" style="padding:3px 10px;font-size:10px">Día</button>
             <button class="f-chip" id="gtd-semana" onclick="setGranTon('semana')" style="padding:3px 10px;font-size:10px">Semana</button>
+            <button class="f-chip" id="gtd-quincena" onclick="setGranTon('quincena')" style="padding:3px 10px;font-size:10px">Quincena</button>
+            <button class="f-chip" id="gtd-estancia" onclick="setGranTon('estancia')" style="padding:3px 10px;font-size:10px" title="Agrupa por cada entrada de la cuadrilla a la obra: corta donde hubo una salida (varios días seguidos sin trabajar)">Estancia</button>
             <button class="f-chip" id="gtd-mes" onclick="setGranTon('mes')" style="padding:3px 10px;font-size:10px">Mes</button>
           </div>
         </div><div class="card-body" style="padding:12px 8px"><div id="chartDia" style="width:100%;height:200px;overflow-x:auto;overflow-y:hidden"></div></div></div>
@@ -3966,7 +4017,8 @@ function render(){
     <button class="btn-exp primary" onclick="exportPago()">📥 Excel pago camiones</button>
     <button class="btn-exp" onclick="exportSICT()">📊 Generador SICT (Excel)</button>
     <button class="btn-exp" onclick="exportCompleto()">📊 Reporte completo (Excel)</button>
-    <button class="btn-exp" onclick="window.print()">🖨️ Imprimir / PDF</button>
+    <button class="btn-exp primary" onclick="_imprimirComoSeVe()">🖨️ PDF como se ve</button>
+    <button class="btn-exp" onclick="_imprimirCompleto()">🖨️ PDF completo</button>
   </div>`;
 
   // Charts
@@ -4018,37 +4070,74 @@ function fmtKm(n){
 
 // ── Toneladas por día — con selector Día/Semana/Mes y ancho FIJO por barra ──
 let _tonFechas=[], _tonValores=[], _granTon='dia';
+// Cubeta y etiqueta de una fecha según la granularidad elegida. Lo usan la gráfica de toneladas y
+// la de acumulado, para que el selector mueva las dos y no digan cosas distintas.
+const _MESNOM=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+// ── ESTANCIAS DE CUADRILLA ──
+// La unidad real de esta obra no es el calendario: es cada entrada de la cuadrilla. Se detecta
+// sola — un hueco largo entre días trabajados significa que el personal salió. En esta obra los
+// huecos son de 0-1 día (domingo, lluvia) o de 8-10 días (salida), sin nada en medio, así que el
+// corte es inequívoco con cualquier umbral razonable.
+let _ESTANCIA_HUECO=4;   // días seguidos sin trabajar que se consideran una salida
+let _estMapa={};         // fecha -> {k, lbl, n}
+function _calcEstancias(fechas){
+  _estMapa={};
+  const fs=[...new Set(fechas)].filter(Boolean).sort();
+  if(!fs.length) return [];
+  const grupos=[]; let actual=[fs[0]];
+  for(let i=1;i<fs.length;i++){
+    const d1=new Date(fs[i-1]+'T12:00:00'), d2=new Date(fs[i]+'T12:00:00');
+    const hueco=Math.round((d2-d1)/86400000)-1;
+    if(hueco>=_ESTANCIA_HUECO){ grupos.push(actual); actual=[fs[i]]; }
+    else actual.push(fs[i]);
+  }
+  grupos.push(actual);
+  const fm=iso=>new Date(iso+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'short'});
+  grupos.forEach((g,i)=>{
+    const k=g[0], lbl=`E${i+1}: ${fm(g[0])}–${fm(g[g.length-1])}`;
+    g.forEach(f=>{ _estMapa[f]={k, lbl, n:g.length}; });
+  });
+  return grupos;
+}
+function _cubeta(fecha, gran){
+  if(gran==='estancia'){
+    const e=_estMapa[fecha];
+    return e ? {k:e.k, lbl:e.lbl} : {k:fecha, lbl:fecha};
+  }
+  const d=new Date(fecha+'T12:00:00');
+  if(gran==='dia') return {k:fecha, lbl:d.toLocaleDateString('es-MX',{day:'2-digit',month:'short'})};
+  if(gran==='semana'){
+    const lunes=new Date(d); lunes.setDate(d.getDate()-((d.getDay()+6)%7));
+    const k=lunes.toISOString().slice(0,10);
+    return {k, lbl:'Sem '+lunes.toLocaleDateString('es-MX',{day:'numeric',month:'short'})};
+  }
+  if(gran==='quincena'){
+    // Quincena natural de obra: del 1 al 15 y del 16 al fin de mes, que es como se corta y se paga.
+    const dia=d.getDate(), ini=dia<=15?1:16;
+    const k=fecha.slice(0,8)+String(ini).padStart(2,'0');
+    return {k, lbl:(ini===1?'1–15 ':'16–fin ')+_MESNOM[d.getMonth()]};
+  }
+  const k=fecha.slice(0,7);
+  return {k, lbl:_MESNOM[d.getMonth()]+' '+fecha.slice(0,4)};
+}
 function dibujarChartTon(fechas, tons){
   _tonFechas=fechas; _tonValores=tons;
   _renderChartTon();
 }
 function _renderChartTon(){
   const diaEl=document.getElementById('chartDia'); if(!diaEl || !_tonFechas.length) return;
-  ['dia','semana','mes'].forEach(g=>{ const b=document.getElementById('gtd-'+g); if(b) b.classList.toggle('active', g===_granTon); });
+  ['dia','semana','quincena','mes','estancia'].forEach(g=>{ const b=document.getElementById('gtd-'+g); if(b) b.classList.toggle('active', g===_granTon); });
 
   let etiquetas=[], valores=[], tips=[];
   if(_granTon==='dia'){
-    etiquetas = _tonFechas.map(f=>{ const d=new Date(f+'T12:00:00'); return d.toLocaleDateString('es-MX',{day:'2-digit',month:'short'}); });
-    valores = _tonValores.slice();
-    tips = _tonFechas.map((f,i)=>{ const d=new Date(f+'T12:00:00'); return d.toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long'})+': '+valores[i].toFixed(1)+' ton'; });
-  } else if(_granTon==='semana'){
-    const buckets={};
-    _tonFechas.forEach((f,i)=>{
-      const d=new Date(f+'T12:00:00'); const dow=d.getDay();
-      const lunes=new Date(d); lunes.setDate(d.getDate()-((dow+6)%7));
-      const key=lunes.toISOString().slice(0,10);
-      buckets[key]=(buckets[key]||0)+_tonValores[i];
-    });
-    const keys=Object.keys(buckets).sort();
-    etiquetas=keys.map(k=>{ const d=new Date(k+'T12:00:00'); return 'Sem '+d.toLocaleDateString('es-MX',{day:'numeric',month:'short'}); });
-    valores=keys.map(k=>buckets[k]);
-    tips=keys.map((k,i)=>etiquetas[i]+': '+valores[i].toFixed(1)+' ton');
+    etiquetas=_tonFechas.map(f=>_cubeta(f,'dia').lbl);
+    valores=_tonValores.slice();
+    tips=_tonFechas.map((f,i)=>{ const d=new Date(f+'T12:00:00'); return d.toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long'})+': '+valores[i].toFixed(1)+' ton'; });
   } else {
-    const buckets={};
-    _tonFechas.forEach((f,i)=>{ const key=f.slice(0,7); buckets[key]=(buckets[key]||0)+_tonValores[i]; });
-    const NOMBRES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+    const buckets={}, lbls={};
+    _tonFechas.forEach((f,i)=>{ const c=_cubeta(f,_granTon); buckets[c.k]=(buckets[c.k]||0)+_tonValores[i]; lbls[c.k]=c.lbl; });
     const keys=Object.keys(buckets).sort();
-    etiquetas=keys.map(k=>NOMBRES[+k.slice(5,7)-1]+' '+k.slice(0,4));
+    etiquetas=keys.map(k=>lbls[k]);
     valores=keys.map(k=>buckets[k]);
     tips=keys.map((k,i)=>etiquetas[i]+': '+valores[i].toFixed(1)+' ton');
   }
@@ -4056,7 +4145,7 @@ function _renderChartTon(){
   const n=valores.length;
   const maxTon = Math.max(...valores)*1.15 || 1;
   const H=200, PAD_L=38, PAD_B=28, PAD_T=14;
-  const BAR_W = _granTon==='dia' ? 22 : (_granTon==='semana' ? 46 : 70);
+  const BAR_W = _granTon==='dia' ? 22 : (_granTon==='semana' ? 46 : (_granTon==='quincena' ? 58 : (_granTon==='estancia' ? 96 : 70)));
   const BAR_GAP = _granTon==='dia' ? 4 : 10;
   const chartW = Math.max(diaEl.clientWidth||400, PAD_L + n*(BAR_W+BAR_GAP) + 20);
   // en vista Día, con muchos puntos, solo se rotula 1 de cada N fechas para no encimarlas — el
@@ -4084,9 +4173,17 @@ function _renderChartTon(){
     <line x1="${PAD_L}" y1="${PAD_T}" x2="${PAD_L}" y2="${H-PAD_B}" stroke="#e2e8f0" stroke-width="1"/>
   </svg>`;
 }
-window.setGranTon=function(g){ _granTon=g; _renderChartTon(); };
+window.setGranTon=function(g){
+  _granTon=g; _renderChartTon();
+  // La de acumulado se dibuja dentro de buildCharts; se repinta con los mismos datos del render
+  // en curso para que las dos gráficas queden siempre en la misma granularidad.
+  if(_ultChart) try{ buildCharts(_ultChart.fechas,_ultChart.labels,_ultChart.acums,_ultChart.byDate); }catch(e){}
+};
 
+let _ultChart=null; // últimos datos usados, para poder repintar al cambiar la granularidad
 function buildCharts(fechas,labels,acums,byDate){
+  _ultChart={fechas,labels,acums,byDate};
+  _calcEstancias(fechas); // antes de dibujar: las cubetas de "estancia" dependen de la lista completa
   // ── GRÁFICA 1: Barras de toneladas — Día / Semana / Mes, con ancho FIJO por barra (no se
   // encoge para caber todas — el contenedor se desplaza horizontalmente en vez de amontonarlas).
   // Las fechas ya no van pegadas abajo (con 40+ días se encimaban y no se leía nada); ahora cada
@@ -4099,17 +4196,16 @@ function buildCharts(fechas,labels,acums,byDate){
   // tendencia con una cantidad de puntos que sí cabe legible en pantalla.
   const acumEl = document.getElementById('chartAcum');
   if(acumEl && fechas.length > 0){
-    const semanas={};
-    fechas.forEach((f,i)=>{
-      const d=new Date(f+'T12:00:00');
-      const dow=d.getDay();
-      const lunes=new Date(d); lunes.setDate(d.getDate()-((dow+6)%7));
-      const key=lunes.toISOString().slice(0,10);
-      semanas[key]=acums[i]; // fechas viene ascendente, así que el último valor por semana es el correcto
-    });
-    const semKeys=Object.keys(semanas).sort();
-    const semLabels=semKeys.map(k=>{ const d=new Date(k+'T12:00:00'); return d.toLocaleDateString('es-MX',{day:'numeric',month:'short'}); });
-    const semVals=semKeys.map(k=>semanas[k]);
+    // Sigue el MISMO selector Día/Semana/Quincena/Mes que la gráfica de toneladas: antes estaba
+    // clavada en semanal, así que el selector movía una gráfica y la otra no — y las dos decían
+    // cosas distintas lado a lado. Por ser acumulado, de cada cubeta se toma el ÚLTIMO valor
+    // (fechas viene ascendente), no la suma.
+    const gran=(typeof _granTon!=='undefined'&&_granTon)||'semana';
+    const cubos={}, cubLbl={};
+    fechas.forEach((f,i)=>{ const c=_cubeta(f,gran); cubos[c.k]=acums[i]; cubLbl[c.k]=c.lbl; });
+    const semKeys=Object.keys(cubos).sort();
+    const semLabels=semKeys.map(k=>cubLbl[k]);
+    const semVals=semKeys.map(k=>cubos[k]);
 
     const W=acumEl.offsetWidth||400, H=180, PAD=40;
     const maxVal = TOT_VOL * 1.1;
