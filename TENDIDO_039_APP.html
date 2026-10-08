@@ -939,7 +939,11 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
       <input type="file" id="genExtraFile" accept=".xlsx,.xls" style="display:none" onchange="leerGeneradorExtra(this.files[0]);this.value=''">
       <button class="bc" style="padding:6px 12px;font-size:12px;border-color:#ef4444;color:#ef4444" onclick="quitarGeneradorExtra()" title="Quitar volúmenes extra importados (bacheo/reniv)">🗑 Quitar extra</button>
     </div>
-    <div id="tiroCadPanel" style="display:none;margin-bottom:8px;border:1px solid var(--bord);border-radius:8px;padding:10px;background:var(--bg);max-height:40vh;overflow:auto"></div>
+    <!-- Panel de vista previa / traslapes. Va como MODAL encima de todo: cuando era un bloque
+         en línea con max-height:40vh, el botón verde de "Aplicar" se quedaba fuera del scroll
+         interno y lo tapaba la barra de Vista avance. Resultado: el import nunca se aplicaba
+         porque no había forma de llegarle al botón. Ahora los botones viven en un pie fijo. -->
+    <div id="tiroCadPanel" style="display:none"></div>
     <div style="display:flex;gap:6px;margin-bottom:8px">
       <button id="tiroVistaSup" onclick="tiroVista('sup')" style="flex:1;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid var(--bord)">📊 Vista avance</button>
       <button id="tiroVistaCli" onclick="tiroVista('cli')" style="flex:1;padding:8px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid var(--bord)">🏗️ Vista cliente</button>
@@ -4765,7 +4769,16 @@ function _conceptosDe(v){
 //           J De KM·K ML·L A KM(f)·M Ancho·N m²(f)·O Esp.teó·P m³(f)·Q Ton·R Esp.real(f)·S T.Prod·T T.Tend
 window.exportarTablaExcel=function(){
   if(typeof XLSX==='undefined'){ toast('No cargó la librería de Excel; revisa tu conexión','err'); return; }
-  const rs=_rsTiroSel(); const filas=[];
+  const rs=_rsTiroSel();
+  // La exportación respeta el filtro de días de la pantalla. Eso es útil para revisar un día
+  // suelto, pero es una trampa si luego se reimporta: el archivo trae solo esos días y uno cree
+  // que actualizó toda la obra. Se avisa antes de bajar un archivo parcial.
+  const _diasTot=new Set(records.map(r=>r.fecha).filter(Boolean)).size;
+  const _diasExp=new Set(rs.map(r=>r.fecha).filter(Boolean)).size;
+  if(_diasExp<_diasTot){
+    if(!confirm(`⚠️ Vas a exportar SOLO ${_diasExp} de ${_diasTot} días (${rs.length} viaje(s)), por el filtro de días que tienes puesto.\n\nSi este archivo lo vas a volver a subir, el resto de la obra NO se actualiza.\n\n¿Exportar así de todas formas?\n\n(Cancela, abre "Días y columnas" y marca todos los días para bajar la obra completa.)`)) return;
+  }
+  const filas=[];
   rs.forEach(v=>{
     if(v.tipo==='regreso'){
       filas.push({ID:v._id,IDX:0,Fecha:v.fecha,Viaje:'',Placas:v.placas||'',
@@ -6349,18 +6362,31 @@ function _calcTraslapes(recs){
   });
   return out;
 }
+// Abre el panel como MODAL: fondo oscuro, tarjeta centrada, cuerpo con scroll propio y PIE FIJO.
+// El pie nunca se va de la vista por largo que sea el contenido — que es exactamente lo que
+// pasaba antes con el botón de "Aplicar".
+window.cerrarCadPanel=function(cancelar){
+  if(cancelar) _cadPend=null;
+  const p=document.getElementById('tiroCadPanel'); if(p){ p.style.display='none'; p.innerHTML=''; }
+};
+function _panelAbrir(titulo,cuerpo,pie){
+  const p=document.getElementById('tiroCadPanel'); if(!p) return;
+  p.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.78);display:flex;align-items:center;justify-content:center;padding:14px';
+  p.innerHTML=`<div style="background:var(--bg);border:1px solid var(--bord);border-radius:14px;width:100%;max-width:760px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.6)">
+    <div style="padding:13px 15px;border-bottom:1px solid var(--bord);font-weight:800;font-size:14px;flex:none">${titulo}</div>
+    <div style="padding:14px 15px;overflow:auto;flex:1 1 auto;-webkit-overflow-scrolling:touch">${cuerpo}</div>
+    <div style="padding:12px 15px;border-top:1px solid var(--bord);background:var(--surf);flex:none;display:flex;gap:9px;flex-wrap:wrap">${pie}</div>
+  </div>`;
+}
 window.revisarTraslapes=function(){
-  const t=_calcTraslapes(records), p=document.getElementById('tiroCadPanel'); if(!p) return;
-  p.style.display='';
-  p.innerHTML=`<div style="font-weight:800;margin-bottom:6px">🔎 Traslapes de carpeta (mismo carril y tramo)</div>`
-    +(t.length?`<div style="color:var(--red);font-size:12px">${t.map(x=>'⚠️ '+x).join('<br>')}</div>`:`<div style="color:var(--green)">✓ Sin traslapes en carpeta.</div>`)
-    +`<div style="margin-top:6px;font-size:11px;color:var(--muted)">Renivelación y bacheo no cuentan (son capas de parche/nivelación, se pisan con la carpeta por diseño).</div>`
-    +`<button class="bc" style="margin-top:8px;padding:5px 10px;font-size:12px" onclick="document.getElementById('tiroCadPanel').style.display='none'">Cerrar</button>`;
+  const t=_calcTraslapes(records);
+  _panelAbrir('🔎 Traslapes de carpeta (mismo carril y tramo)',
+    (t.length?`<div style="color:var(--red);font-size:12px;line-height:1.7">${t.map(x=>'⚠️ '+x).join('<br>')}</div>`:`<div style="color:var(--green);font-weight:700">✓ Sin traslapes en carpeta.</div>`)
+    +`<div style="margin-top:10px;font-size:11px;color:var(--muted)">Solo se compara la carpeta. Renivelación, bacheo y topes no cuentan: son capas de parche que se pisan con la carpeta por diseño. Los regresos y cancelados tampoco, porque no tendieron nada.</div>`,
+    `<button class="bc" style="padding:9px 18px;min-height:44px" onclick="cerrarCadPanel()">Cerrar</button>`);
 };
 function _panelCad(cambios,errores,traslapes,nv,omitidas){
-  const p=document.getElementById('tiroCadPanel'); if(!p) return; p.style.display='';
-  let h=`<div style="font-weight:800;margin-bottom:6px">📋 Vista previa · cambios de cadenamiento</div>`;
-  h+=`<div style="font-size:12px;margin-bottom:6px">${cambios.length} cambio(s) en ${nv} viaje(s).</div>`;
+  let h=`<div style="font-size:12px;margin-bottom:8px">${cambios.length} cambio(s) en ${nv} viaje(s).</div>`;
   // Los cambios de CONCEPTO se separan arriba: son los que mueven volumen de un renglón de cobro
   // a otro, así que no deben quedar enterrados entre 100 ajustes de decimales de cadenamiento.
   const cambCpt=cambios.filter(c=>c.indexOf('concepto ')>=0);
@@ -6369,20 +6395,28 @@ function _panelCad(cambios,errores,traslapes,nv,omitidas){
   if(errores.length) h+=`<div style="color:var(--red);font-size:12px;margin-bottom:6px"><b>Errores (esas filas NO se aplican):</b><br>${errores.slice(0,30).join('<br>')}${errores.length>30?'<br>…':''}</div>`;
   if(cambios.length) h+=`<details style="margin-bottom:6px"><summary style="cursor:pointer;font-size:12px;color:var(--blue)">Ver los ${cambios.length} cambios</summary><div style="font-size:11px;margin-top:4px;line-height:1.5">${cambios.slice(0,100).join('<br>')}${cambios.length>100?'<br>…':''}</div></details>`;
   h+=`<div style="margin:6px 0;font-size:12px"><b>Traslapes tras los cambios:</b> ${traslapes.length?`<span style="color:var(--red)">${traslapes.length} ⚠️</span>`:'<span style="color:var(--green)">ninguno ✓</span>'}</div>`;
-  if(traslapes.length) h+=`<div style="color:var(--red);font-size:11px;margin-bottom:6px;line-height:1.5">${traslapes.map(x=>'⚠️ '+x).join('<br>')}</div>`;
-  h+=`<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-    <button class="bc" style="padding:7px 14px;font-weight:700;border-color:var(--green);color:var(--green)" onclick="aplicarCadPend()" ${nv?'':'disabled'}>✓ Aplicar ${nv} cambio(s) a la obra</button>
-    <button class="bc" style="padding:7px 14px" onclick="_cadPend=null;document.getElementById('tiroCadPanel').style.display='none'">Cancelar</button></div>`;
-  p.innerHTML=h;
+  if(traslapes.length) h+=`<div style="color:var(--red);font-size:11px;margin-bottom:6px;line-height:1.6">${traslapes.map(x=>'⚠️ '+x).join('<br>')}</div>`;
+  _panelAbrir('📋 Vista previa · cambios de cadenamiento', h,
+    `<button class="bc" style="padding:11px 18px;min-height:44px;font-weight:800;border-color:var(--green);color:var(--green)" onclick="aplicarCadPend()" ${nv?'':'disabled'}>✓ Aplicar ${nv} cambio(s) a la obra</button>
+     <button class="bc" style="padding:11px 18px;min-height:44px" onclick="cerrarCadPanel(true)">Cancelar</button>`);
 }
 window.aplicarCadPend=async function(){
   if(!_cadPend||!_cadPend.length){ toast('No hay cambios pendientes','err'); return; }
-  const p=document.getElementById('tiroCadPanel');
-  if(p) p.innerHTML='<div style="padding:10px">Aplicando cambios… no cierres la app.</div>';
-  let ok=0,fail=0;
-  for(const u of _cadPend){ try{ await updateDoc(doc(db,COL,u.id),u.upd); ok++; }catch(e){ fail++; } }
+  const tot=_cadPend.length;
+  _panelAbrir('⏳ Aplicando cambios','<div id="cadProg" style="font-size:13px">Guardando 0 de '+tot+'… no cierres la app.</div>','');
+  let ok=0,fail=0; const errs=[];
+  for(const u of _cadPend){
+    try{ await updateDoc(doc(db,COL,u.id),u.upd); ok++; }
+    catch(e){ fail++; if(errs.length<10) errs.push(`viaje ${u.num||'?'}: ${e.message}`); }
+    const pr=document.getElementById('cadProg');
+    if(pr) pr.textContent=`Guardando ${ok+fail} de ${tot}… no cierres la app.`;
+  }
   _cadPend=null;
-  if(p) p.innerHTML=`<div style="color:var(--green);font-weight:700">✓ ${ok} viaje(s) actualizado(s)${fail?` · <span style="color:var(--red)">${fail} con error</span>`:''}</div><button class="bc" style="margin-top:8px;padding:5px 10px" onclick="document.getElementById('tiroCadPanel').style.display='none'">Cerrar</button>`;
+  _panelAbrir(fail?'⚠️ Terminó con errores':'✓ Cambios aplicados',
+    `<div style="color:var(--green);font-weight:800;font-size:14px">✓ ${ok} viaje(s) actualizado(s) en la obra</div>`
+    +(fail?`<div style="color:var(--red);font-size:12px;margin-top:8px"><b>${fail} con error:</b><br>${errs.join('<br>')}</div>`:'')
+    +`<div style="margin-top:10px;font-size:12px;color:var(--muted)">Ya quedaron guardados. Cierra y pícale a 🔎 Revisar traslapes para comprobar.</div>`,
+    `<button class="bc" style="padding:11px 18px;min-height:44px" onclick="cerrarCadPanel()">Cerrar</button>`);
   toast(`${ok} viaje(s) actualizado(s)`,fail?'err':'ok');
 };
 window.modificarDesdeTiro=function(id){ openEdit(id); }; // abre el editor encima; al guardar, la tabla se refresca sola
