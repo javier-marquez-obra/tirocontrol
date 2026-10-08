@@ -1384,13 +1384,52 @@ function _depPartidas(r){
 }
 // Señales de captura dudosa — no son errores por sí solas, pero es donde suelen estar los viajes
 // que cayeron en el concepto equivocado.
+// Índice de vales/remisiones repetidos de la obra activa — se arma una vez por render del
+// depurador, no por fila, para no recorrer todos los viajes N veces.
+let _depFolioIdx=null;
+function _depReindexFolios(){
+  const vale={}, rem={};
+  (recordsAll||[]).forEach(r=>{
+    if((r.obra||'039')!==obraActiva) return;
+    const v=String(r.vale||'').trim(), m=String(r.remision||'').trim();
+    if(v) (vale[v]=vale[v]||[]).push(r._id);
+    if(m) (rem[m]=rem[m]||[]).push(r._id);
+  });
+  _depFolioIdx={vale,rem};
+}
 function _depAlertas(r,p){
   const a=[];
   if(!p.carril) a.push('sin carril');
   if(p.kde==null||isNaN(p.kde)) a.push('sin cadenamiento');
+  // El cadenamiento se guarda en METROS. Si alguien teclea "57.28" (kilómetros) el viaje queda
+  // en el metro 57 de la carretera: el larguillo lo manda al principio del tramo y el m² sale mal.
+  // Rango real de esta obra: O1 ~ 40 000–70 000 m, O2 ~ 247 000–252 000 m.
+  else if(p.kde>0 && p.kde<1000) a.push('cadenamiento en KM, no en metros (faltan los miles)');
   if(!(p.ton>0) && !(r.ton_recibidas>0)) a.push('sin tonelaje');
   if(!p.vol) a.push('sin volumen');
   if(!getCatItem(p.idRaw)) a.push('id fuera del catálogo');
+  // Espesor real contra el teórico del concepto: un 8 cm dentro de carpeta de 3 cm es un tope
+  // mal clasificado, y es justo lo que infla el avance del renglón de carpeta.
+  const esp=+(p.esp||0);
+  if(esp>0 && (esp<1.5 || esp>6)) a.push('espesor '+esp+' cm — no es carpeta, revisa el concepto');
+  // Espesor REAL contra la geometría: esp_real = ton·esp / (vol·DEN). Es el detector de verdad del
+  // tonelaje mal repartido — una carga completa sobre media área salta de inmediato. El volumen
+  // cobrable no se mueve, pero el indicador de espesor sí, y es la señal de captura chueca.
+  if((p.k==='carp3'||p.k==='carp5') && esp>0 && p.vol>0 && p.ton>0){
+    const espReal=(p.ton*esp)/(p.vol*DEN);
+    if(espReal>2*esp) a.push('espesor real '+espReal.toFixed(1)+' cm vs '+esp+' cm teóricos — sobra tonelaje para esa área');
+    else if(espReal<esp/2) a.push('espesor real '+espReal.toFixed(1)+' cm vs '+esp+' cm teóricos — falta tonelaje para esa área');
+  }
+  if(_depFolioIdx){
+    const v=String(r.vale||'').trim(), m=String(r.remision||'').trim();
+    // Un vale repetido NO es un error por sí solo: en carpeta, cuando una carga se reparte en dos
+    // colocaciones capturadas como registros separados, el vale se repite a propósito. Lo que hay
+    // que verificar es que el TONELAJE esté repartido y no capturado completo en los dos. Por eso
+    // el aviso dice qué revisar, en vez de marcarlo como viaje malo.
+    if(v && (_depFolioIdx.vale[v]||[]).length>1) a.push('vale '+v+' en '+_depFolioIdx.vale[v].length+' registros — si es una carga repartida, revisa que el tonelaje esté dividido y no completo en cada uno');
+    if(m && (_depFolioIdx.rem[m]||[]).length>1) a.push('remisión '+m+' en '+_depFolioIdx.rem[m].length+' registros — revisa el reparto de tonelaje');
+    if(v && m && v===m) a.push('vale y remisión con el mismo número');
+  }
   return a;
 }
 window.abrirDepurador=function(){
@@ -1408,6 +1447,7 @@ window.depSelTodos=function(){
 };
 function renderDepurador(){
   const body=document.getElementById('depurarBody'); if(!body) return;
+  _depReindexFolios();
   const recs=(recordsAll||[]).filter(r=>(r.obra||'039')===obraActiva && r.tipo!=='regreso' && r.tipo!=='cancelado');
   const grupos={};
   recs.forEach(r=>_depPartidas(r).forEach(p=>{
@@ -6188,12 +6228,26 @@ function _procesarCadExcel(rows){
     let sent=String(row.Sentido||'').toLowerCase().trim(); sent=sent.startsWith('b')?'baja':'sube';
     const carril=String(row.Carril||'').trim();
     if(isNaN(kde)||isNaN(ml)||ml<=0){ errores.push(`Fila ${n+2} (viaje ${v.num_viaje_dia}): De KM o ML inválido`); return; }
+    // El cadenamiento se guarda en METROS. Si en el Excel se teclea "57.28" (kilómetros) el viaje
+    // se va al metro 57 de la carretera: el larguillo lo manda al arranque del tramo y el m² sale
+    // mal. Se rechaza la fila para que no entre, en vez de aplicarla y tener que cazarla después.
+    if(kde<1000){ errores.push(`Fila ${n+2} (viaje ${v.num_viaje_dia}): De KM "${row['De KM']}" está en kilómetros — escríbelo en metros (p. ej. 57+280 o 57280, no 57.28)`); return; }
     // Concepto: si viene, se valida contra los 5 canónicos del catálogo E-7. Si no se reconoce, se rechaza toda la fila (no se aplica nada a medias).
     let conceptoNuevo=null;
     if(row.Concepto!=null && String(row.Concepto).trim()!==''){
-      const key=_canonKeyC(row.Concepto, row.Concepto, kde);
-      if(!key){ errores.push(`Fila ${n+2} (viaje ${v.num_viaje_dia}): concepto "${row.Concepto}" no reconocido — usa Renivelación, Bacheo, Carpeta 3cm o Carpeta 5cm`); return; }
-      conceptoNuevo={id:_CANON_ID[key],label:_CANON_LBL[key]};
+      const txtC=String(row.Concepto).trim();
+      const key=_canonKeyC(txtC, txtC, kde);
+      if(key){
+        conceptoNuevo={id:_CANON_ID[key],label:_CANON_LBL[key]};
+      } else if(/^(TOPE|OTRO|OTROS|RENIVELACION MANUAL|SOBRECARPETA|EXTRA)/i.test(txtC)){
+        // Sacar algo de un renglón de cobro: va al concepto OTRO (pu 0, sin meta), pero se
+        // conserva el texto que escribió el superintendente como label para que en el larguillo
+        // y en las tablas se lea "TOPE" y no un genérico. Los topes son el caso típico: 3.5 m
+        // con 8-10 cm de espesor contando dentro de carpeta de 3 cm e inflando el avance.
+        conceptoNuevo={id:'OTRO',label:txtC};
+      } else {
+        errores.push(`Fila ${n+2} (viaje ${v.num_viaje_dia}): concepto "${txtC}" no reconocido — usa Renivelación, Bacheo, Carpeta 3cm, Carpeta 5cm, o TOPE / OTRO para sacarlo de los renglones de cobro`); return;
+      }
     }
     // Ton: si viene, se aplica al concepto (no toca el ton_recibidas del viaje/báscula).
     let tonNuevo=null;
@@ -6247,15 +6301,30 @@ function _procesarCadExcel(rows){
   _cadPend=updates;
   _panelCad(cambios,errores,_calcTraslapes(estado),updates.length);
 }
+// Solo la CARPETA puede traslaparse de verdad (es la capa continua y única por carril).
+// Renivelación, bacheo, topes y "Otro" son capas de parche: por diseño se pisan con la carpeta.
+// Antes esto se filtraba con /reniv|bacheo/ sobre el texto del concepto; si el concepto venía
+// mal escrito, sin label o con un id que no es del catálogo, el filtro no lo veía y salían
+// traslapes falsos. Ahora se usa LISTA BLANCA con el mismo canonizador del catálogo: se compara
+// únicamente lo que resuelve a carp3 / carp5. Cualquier otra cosa (incluido lo no reconocido)
+// queda fuera de la comparación.
+function _esCarpetaConcepto(c,v){
+  const k=_canonKeyC(c.id, c.label, (c.kde!=null?c.kde:v&&v.kde));
+  return k==='carp3' || k==='carp5';
+}
 function _calcTraslapes(recs){
   const segs=[];
-  recs.forEach(v=>_conceptosDe(v).forEach(c=>{
-    if(c.kde==null||c.ka==null) return;
-    const txt=((c.id||'')+' '+(c.label||'')); if(/reniv|bacheo/i.test(txt)) return; // reniv y bacheo son capas de parche/nivelación, se pisan con la carpeta por diseño
-    const a=Math.min(c.kde,c.ka), b=Math.max(c.kde,c.ka); if(b-a<0.5) return;
-    const lado=ladoDe(c.carril||v.carril); if(!lado) return; // carril no reconocido: no se compara (evita falsos traslapes)
-    segs.push({a,b,lado,tramo:(c.kde>=247000?'O2':'O1'),num:v.num_viaje_dia,fecha:v.fecha||'?'});
-  }));
+  (recs||[]).forEach(v=>{
+    if(v.tipo==='regreso'||v.tipo==='cancelado') return; // no tendieron nada: su cadenamiento no ocupa carril
+    _conceptosDe(v).forEach(c=>{
+      if(c.kde==null||c.ka==null) return;
+      if(!_esCarpetaConcepto(c,v)) return;
+      const a=Math.min(c.kde,c.ka), b=Math.max(c.kde,c.ka); if(b-a<0.5) return;
+      const lado=ladoDe(c.carril||v.carril); if(!lado) return; // carril no reconocido: no se compara (evita falsos traslapes)
+      segs.push({a,b,lado,tramo:(c.kde>=247000?'O2':'O1'),num:v.num_viaje_dia,fecha:v.fecha||'?',
+        cpt:conceptoCanon(c.id,c.label,c.kde)});
+    });
+  });
   const nomLado={IZQ:'L. IZQ.',CEN:'CENT.',DER:'L. DER.'};
   // Agrupa por FECHA + tramo + carril: solo se comparan viajes del mismo día (evita falsos traslapes entre días distintos)
   const grupos={}; segs.forEach(s=>{ const k=s.fecha+' · '+s.tramo+' · '+(nomLado[s.lado]||s.lado); (grupos[k]=grupos[k]||[]).push(s); });
@@ -6265,7 +6334,7 @@ function _calcTraslapes(recs){
     for(const cur of arr){
       if(maxSeg && cur.a < maxEnd-0.5){
         const ov=Math.min(maxSeg.b,cur.b)-Math.max(maxSeg.a,cur.a);
-        if(ov>0.5) out.push(`${k}: viaje ${maxSeg.num} (${fmtCad(maxSeg.a)}–${fmtCad(maxSeg.b)}) ⟷ viaje ${cur.num} (${fmtCad(cur.a)}–${fmtCad(cur.b)}) ≈ ${ov.toFixed(2)} m`);
+        if(ov>0.5) out.push(`${k}: viaje ${maxSeg.num} [${maxSeg.cpt}] (${fmtCad(maxSeg.a)}–${fmtCad(maxSeg.b)}) ⟷ viaje ${cur.num} [${cur.cpt}] (${fmtCad(cur.a)}–${fmtCad(cur.b)}) ≈ ${ov.toFixed(2)} m`);
       }
       if(cur.b>maxEnd){ maxEnd=cur.b; maxSeg=cur; }
     }
@@ -6649,7 +6718,7 @@ function _checkTraslapeEnVivo(i){
   if(!el) return;
   const cv=conceptosViaje[i];
   if(!cv || cv.kde==null || cv.ka==null || isNaN(cv.kde) || isNaN(cv.ka)){ el.style.display='none'; return; }
-  if(/reniv|bacheo/i.test(cv.id||'')){ el.style.display='none'; return; } // reniv/bacheo se pisan con carpeta por diseño
+  if(!_esCarpetaConcepto(cv,null)){ el.style.display='none'; return; } // solo la carpeta se traslapa de verdad (ver _esCarpetaConcepto)
   const a=Math.min(cv.kde,cv.ka), b=Math.max(cv.kde,cv.ka);
   if(b-a<0.5){ el.style.display='none'; return; }
   const lado=ladoDeCarril(cv.carril);
@@ -6658,10 +6727,11 @@ function _checkTraslapeEnVivo(i){
   let choque=null;
   for(const r of records){
     if(choque) break;
+    if(r.tipo==='regreso'||r.tipo==='cancelado') continue; // no tendieron: su cadenamiento no ocupa carril
     _conceptosDe(r).forEach(c=>{
       if(choque) return;
       if(c.kde==null||c.ka==null) return;
-      if(/reniv|bacheo/i.test(c.id||'')) return;
+      if(!_esCarpetaConcepto(c,r)) return;
       const lado2=ladoDeCarril(c.carril||r.carril); if(lado2!==lado) return;
       const tramo2=(c.kde>=247000?'O2':'O1'); if(tramo2!==tramo) return;
       const a2=Math.min(c.kde,c.ka), b2=Math.max(c.kde,c.ka);

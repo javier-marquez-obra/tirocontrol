@@ -1790,6 +1790,9 @@ function _tipoDeKey(key){ return key==='reniv'?'reniv':(key&&key.startsWith('car
 function _buildLarguilloSegs(recs){
   const segs=[], sinCarril=[];
   recs.forEach(v=>{
+    // Un regreso o un viaje cancelado NO tendió nada: su cadenamiento (heredado del autocompletado)
+    // no ocupa carril. Si entra al larguillo pinta un tramo que no existe y genera traslapes falsos.
+    if(v.tipo==='regreso'||v.tipo==='cancelado') return;
     const cs=(v.conceptos&&v.conceptos.length)?v.conceptos:[{kde:v.kde,ka:v.ka,carril:v.carril,label:v.concepto,id:v.concepto,ton:v.ton_recibidas,volumen:v.volumen,area:v.area,esp_teorico:v.esp_teorico,ancho:v.ancho}];
     cs.forEach(c=>{
       if(c.kde==null||c.ka==null) return;
