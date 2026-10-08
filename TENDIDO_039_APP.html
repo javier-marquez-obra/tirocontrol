@@ -6219,11 +6219,19 @@ window.reporteEstadisticaFallas=function(){
 const _CANON_ID={reniv:'RENIV-O1',carp3:'CARPETA3-O1',bach1:'BACHEO-O1',carp5:'CARPETA5-O2',bach2:'BACHEO-O2'};
 function _procesarCadExcel(rows){
   const cambios=[], errores=[], porViaje={};
+  let omitidas=0; // filas de regreso/cancelado: se saltan a propósito, no son errores
   rows.forEach((row,n)=>{
     const id=String(row.ID||'').trim(), idx=parseInt(row.IDX);
     if(!id||isNaN(idx)){ errores.push(`Fila ${n+2}: falta ID o IDX`); return; }
     const v=records.find(r=>r._id===id);
     if(!v){ errores.push(`Fila ${n+2}: no existe el viaje (ID ${id.slice(0,6)}…)`); return; }
+    // Los regresos y los cancelados SÍ salen en la exportación (para que el Excel sea el espejo
+    // completo del día), pero con ML en 0 y sin cadenamiento, porque no tendieron nada. Al volver
+    // a subir el archivo el validador los leía como viajes normales, veía ML=0 y los rechazaba:
+    // 10 renglones en rojo que asustaban sin que hubiera nada roto. Se omiten a propósito y se
+    // cuentan aparte, para que el aviso diga "omitidas" y no "error".
+    const _tipoFila=String(row.Concepto||'').trim().toUpperCase();
+    if(v.tipo==='regreso'||v.tipo==='cancelado'||_tipoFila==='REGRESO'||_tipoFila==='CANCELADO'){ omitidas++; return; }
     const kde=parseCad(String(row['De KM'])); const ml=parseFloat(row.ML);
     let sent=String(row.Sentido||'').toLowerCase().trim(); sent=sent.startsWith('b')?'baja':'sube';
     const carril=String(row.Carril||'').trim();
@@ -6299,7 +6307,7 @@ function _procesarCadExcel(rows){
   });
   const estado=records.map(r=>{ const pv=porViaje[r._id]; return pv?{...r,conceptos:pv.conceptos}:r; });
   _cadPend=updates;
-  _panelCad(cambios,errores,_calcTraslapes(estado),updates.length);
+  _panelCad(cambios,errores,_calcTraslapes(estado),updates.length,omitidas);
 }
 // Solo la CARPETA puede traslaparse de verdad (es la capa continua y única por carril).
 // Renivelación, bacheo, topes y "Otro" son capas de parche: por diseño se pisan con la carpeta.
@@ -6349,10 +6357,15 @@ window.revisarTraslapes=function(){
     +`<div style="margin-top:6px;font-size:11px;color:var(--muted)">Renivelación y bacheo no cuentan (son capas de parche/nivelación, se pisan con la carpeta por diseño).</div>`
     +`<button class="bc" style="margin-top:8px;padding:5px 10px;font-size:12px" onclick="document.getElementById('tiroCadPanel').style.display='none'">Cerrar</button>`;
 };
-function _panelCad(cambios,errores,traslapes,nv){
+function _panelCad(cambios,errores,traslapes,nv,omitidas){
   const p=document.getElementById('tiroCadPanel'); if(!p) return; p.style.display='';
   let h=`<div style="font-weight:800;margin-bottom:6px">📋 Vista previa · cambios de cadenamiento</div>`;
   h+=`<div style="font-size:12px;margin-bottom:6px">${cambios.length} cambio(s) en ${nv} viaje(s).</div>`;
+  // Los cambios de CONCEPTO se separan arriba: son los que mueven volumen de un renglón de cobro
+  // a otro, así que no deben quedar enterrados entre 100 ajustes de decimales de cadenamiento.
+  const cambCpt=cambios.filter(c=>c.indexOf('concepto ')>=0);
+  if(cambCpt.length) h+=`<div style="border:1px solid var(--gold);border-radius:8px;padding:8px;margin-bottom:6px"><div style="font-weight:800;font-size:12px;color:var(--gold);margin-bottom:4px">⬛ ${cambCpt.length} cambio(s) de CONCEPTO — mueven volumen entre renglones</div><div style="font-size:11px;line-height:1.5">${cambCpt.slice(0,40).join('<br>')}${cambCpt.length>40?'<br>…':''}</div></div>`;
+  if(omitidas) h+=`<div style="font-size:11px;color:var(--muted);margin-bottom:6px">${omitidas} fila(s) de regreso/cancelado omitidas — no tendieron nada, no hay cadenamiento que actualizar.</div>`;
   if(errores.length) h+=`<div style="color:var(--red);font-size:12px;margin-bottom:6px"><b>Errores (esas filas NO se aplican):</b><br>${errores.slice(0,30).join('<br>')}${errores.length>30?'<br>…':''}</div>`;
   if(cambios.length) h+=`<details style="margin-bottom:6px"><summary style="cursor:pointer;font-size:12px;color:var(--blue)">Ver los ${cambios.length} cambios</summary><div style="font-size:11px;margin-top:4px;line-height:1.5">${cambios.slice(0,100).join('<br>')}${cambios.length>100?'<br>…':''}</div></details>`;
   h+=`<div style="margin:6px 0;font-size:12px"><b>Traslapes tras los cambios:</b> ${traslapes.length?`<span style="color:var(--red)">${traslapes.length} ⚠️</span>`:'<span style="color:var(--green)">ninguno ✓</span>'}</div>`;
