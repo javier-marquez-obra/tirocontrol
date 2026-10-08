@@ -78,6 +78,19 @@ html,body{background:var(--bg);color:var(--txt);font-family:'Inter',sans-serif;f
 .main{padding:20px 24px;max-width:1400px;margin:0 auto}
 .section-hdr{font-size:10px;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.1em;margin:20px 0 10px;display:flex;align-items:center;gap:8px}
 .section-hdr::after{content:'';flex:1;height:1px;background:var(--gray2)}
+/* ── SECCIONES PLEGABLES ──
+   El encabezado es el interruptor. Al recoger, se esconde TODO lo que va después del encabezado
+   dentro de la sección; el encabezado se queda como lomo para saber qué hay ahí abajo. */
+.sec>.section-hdr{cursor:pointer;user-select:none;min-height:34px;padding:4px 2px;border-radius:6px;transition:background .12s}
+.sec>.section-hdr:hover{background:var(--gray3,rgba(127,127,127,.08))}
+.sec>.section-hdr::before{content:'▾';font-size:11px;color:var(--gray);flex:0 0 auto;transition:transform .15s;display:inline-block}
+.sec.cerrada>.section-hdr::before{transform:rotate(-90deg)}
+.sec.cerrada>:not(.section-hdr){display:none !important}
+.sec.cerrada>.section-hdr{opacity:.72;margin-bottom:2px}
+.sec.cerrada>.section-hdr .sec-chip{display:inline-flex}
+.sec-chip{display:none;font-size:9px;font-weight:700;color:var(--gray);border:1px solid var(--gray2);border-radius:99px;padding:1px 7px;letter-spacing:.04em;text-transform:none}
+/* Al imprimir no se esconde nada: el PDF siempre sale completo. */
+@media print{ .sec.cerrada>:not(.section-hdr){display:revert !important} .sec>.section-hdr::before{content:''} }
 
 /* ── KPI GRID ── */
 .kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
@@ -2453,16 +2466,88 @@ function buildEspesor(recs){
 // Por default (sin filtro, "Todas") es del inicio de obra a hoy. Si eliges un mes o días
 // específicos, el rango se ajusta a lo seleccionado — así puedes ver el balance de agosto solo,
 // por ejemplo, en vez de siempre el acumulado completo del proyecto.
-function _rangoBalanceDias(){
-  const hoyStr=new Date().toISOString().slice(0,10);
-  if(filtros.fecha==='all') return [PROG_INICIO, hoyStr];
-  const sel=Array.isArray(filtros.fecha)?filtros.fecha:[];
-  if(!sel.length) return [PROG_INICIO, hoyStr];
-  const ordenado=sel.slice().sort();
-  return [ordenado[0], ordenado[ordenado.length-1] > hoyStr ? hoyStr : ordenado[ordenado.length-1]];
+// Fin del periodo que se mide. Antes era SIEMPRE "hoy", así que al terminar la obra el reporte
+// seguía contando como "sin actividad" cada día del calendario posterior al último tiro: una obra
+// que cerró en septiembre salía con 90 días inactivos en octubre, que es falso y se ve pésimo.
+// Ahora manda, en este orden: la fecha de cierre que se haya fijado a mano, el último día con
+// datos, y solo si no hay ninguna de las dos, hoy.
+function _finObra(recsAll){
+  const cierre=(_p039_config&&_p039_config.fechaTerminoReal)||'';
+  if(/^\d{4}-\d{2}-\d{2}$/.test(cierre)) return cierre;
+  const fs=(recsAll||[]).map(r=>r.fecha).filter(f=>/^\d{4}-\d{2}-\d{2}$/.test(f||'')).sort();
+  return fs.length ? fs[fs.length-1] : new Date().toISOString().slice(0,10);
 }
+// Arranque del periodo. PROG_INICIO es la fecha de programa (recorrido/movilización), no el día
+// en que de verdad empezó a entrar mezcla: usarla cargaba como "sin actividad" semanas en las que
+// todavía no había obra que medir. Manda la fecha real configurada; si no hay, el primer día con
+// datos; y solo al final la del programa.
+function _inicioObra(recsAll){
+  const real=(_p039_config&&_p039_config.fechaInicioReal)||'';
+  if(/^\d{4}-\d{2}-\d{2}$/.test(real)) return real;
+  const fs=(recsAll||[]).map(r=>r.fecha).filter(f=>/^\d{4}-\d{2}-\d{2}$/.test(f||'')).sort();
+  return fs.length ? fs[0] : PROG_INICIO;
+}
+function _rangoBalanceDias(recsAll){
+  const iniStr=_inicioObra(recsAll), finStr=_finObra(recsAll);
+  if(filtros.fecha==='all') return [iniStr, finStr];
+  const sel=Array.isArray(filtros.fecha)?filtros.fecha:[];
+  if(!sel.length) return [iniStr, finStr];
+  const ordenado=sel.slice().sort();
+  return [ordenado[0], ordenado[ordenado.length-1] > finStr ? finStr : ordenado[ordenado.length-1]];
+}
+// Fija o quita la fecha de cierre de la obra. Al cerrarla, el balance deja de contar los días
+// posteriores y el reporte queda congelado en el periodo que de verdad se trabajó.
+window.p039_cerrarObra=async function(){
+  const ultimo=_finObra(typeof allRecs!=='undefined'?allRecs:[]);
+  const prop=prompt('Fecha de CIERRE de la obra (AAAA-MM-DD).\n\nA partir de ese día el reporte deja de contar días sin actividad.\nDéjalo vacío y acepta para REABRIR la obra.', ultimo);
+  if(prop===null) return;
+  const v=prop.trim();
+  if(v && !/^\d{4}-\d{2}-\d{2}$/.test(v)){ alert('Formato no válido. Usa AAAA-MM-DD, por ejemplo 2026-09-17.'); return; }
+  const cfg={..._p039_config, fechaTerminoReal:v};
+  if(await guardarP039('config', cfg)){
+    _p039_config=cfg;
+    alert(v?('Obra cerrada el '+v+'.\n\nEl balance de días ya no cuenta nada después de esa fecha.'):'Obra reabierta.');
+    if(typeof render==='function') render();
+  }
+};
+// ═══ SECCIONES PLEGABLES ═══
+// Qué secciones son "de datos" (tablas largas, listados) y cuáles son de lectura rápida (KPIs y
+// gráficas). Sirve para el botón "Solo gráficas": recoge las de datos y deja arriba lo que se
+// enseña. Una sección que no esté en esta lista se trata como gráfica y se queda abierta.
+const _SEC_DATOS=['tabla','balanceDias','gastos','costos','emulsion','horarios','distancias','conciliacion','cadenamiento'];
+let _secEstado={};
+try{ _secEstado=JSON.parse(localStorage.getItem('rep039_sec_cerradas')||'{}')||{}; }catch(e){ _secEstado={}; }
+function _secCerrada(k){ return _secEstado[k]===true; }
+function _secGuardar(){ try{ localStorage.setItem('rep039_sec_cerradas', JSON.stringify(_secEstado)); }catch(e){} }
+window._secToggle=function(k,el){
+  _secEstado[k]=!_secEstado[k]; _secGuardar();
+  if(el) el.classList.toggle('cerrada', !!_secEstado[k]);
+};
+window._secTodas=function(cerrar){
+  document.querySelectorAll('#mainContent .sec').forEach(sec=>{
+    const k=sec.dataset.sec; _secEstado[k]=!!cerrar; sec.classList.toggle('cerrada', !!cerrar);
+  });
+  _secGuardar();
+};
+window._secSoloGraficas=function(){
+  document.querySelectorAll('#mainContent .sec').forEach(sec=>{
+    const k=sec.dataset.sec, cerrar=_SEC_DATOS.indexOf(k)>=0;
+    _secEstado[k]=cerrar; sec.classList.toggle('cerrada', cerrar);
+  });
+  _secGuardar();
+};
+// Un solo escucha para toda la página: las secciones se vuelven a dibujar en cada render, así que
+// poner el onclick en cada encabezado se perdería. Delegado en el contenedor, sobrevive siempre.
+document.addEventListener('click', e=>{
+  const h=e.target.closest && e.target.closest('#mainContent .sec>.section-hdr');
+  if(!h) return;
+  if(e.target.closest('button, a, input, select, label')) return; // los controles del encabezado siguen funcionando
+  const sec=h.parentElement; if(!sec||!sec.dataset.sec) return;
+  _secToggle(sec.dataset.sec, sec);
+});
 function buildBalanceDias(recsAll){
-  const [inicioStr, finStr] = _rangoBalanceDias();
+  const [inicioStr, finStr] = _rangoBalanceDias(recsAll);
+  const cerrada=/^\d{4}-\d{2}-\d{2}$/.test((_p039_config&&_p039_config.fechaTerminoReal)||'');
   const diasConDatos=new Set(recsAll.map(r=>r.fecha).filter(Boolean));
   const inicio=new Date(inicioStr+'T12:00:00');
   const fin=new Date(finStr+'T12:00:00');
@@ -2480,9 +2565,19 @@ function buildBalanceDias(recsAll){
     const d=new Date(x.fecha+'T12:00:00');
     return `<tr><td>${d.toLocaleDateString('es-MX',{day:'2-digit',month:'short',year:'numeric'})}</td><td>${DOW[x.dow]}</td></tr>`;
   }).join('');
-  const rangoTxt = filtros.fecha==='all' ? `desde ${new Date(inicioStr+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'short'})}` : `${new Date(inicioStr+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'short'})} – ${new Date(finStr+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'short'})}`;
+  const _f=iso=>new Date(iso+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'short'});
+  const rangoTxt = `${_f(inicioStr)} – ${_f(finStr)}`;
   return `
   <div class="section-hdr">📅 Balance de días trabajados${filtros.fecha!=='all'?' — periodo filtrado':''}</div>
+  <div class="noprint" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px">
+    <div style="font-size:12px;color:var(--txt3)">
+      ${cerrada
+        ? `🔒 <b>Obra cerrada el ${new Date(finStr+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'})}</b> — no se cuentan días después de esa fecha.`
+        : `🔓 Obra <b>abierta</b> — el periodo llega hasta el último día con datos (${new Date(finStr+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'})}). Si ya terminó, ciérrala para dejar el periodo fijo.`}
+      <span style="color:var(--gray)"> · Arranca el ${new Date(inicioStr+'T12:00:00').toLocaleDateString('es-MX',{day:'numeric',month:'long',year:'numeric'})}${(_p039_config&&_p039_config.fechaInicioReal)?' (fecha de inicio configurada)':' (primer día con viajes)'}.</span>
+    </div>
+    <button class="btn-exp" style="padding:7px 13px;min-height:40px;font-weight:700;${cerrada?'':'border-color:#dc2626;color:#dc2626'}" onclick="p039_cerrarObra()">${cerrada?'🔓 Reabrir / cambiar fecha':'🔒 Cerrar obra'}</button>
+  </div>
   <div class="kpi-grid">
     <div class="kpi"><span class="kpi-icon">📆</span><div class="kpi-label">Días del periodo</div><div class="kpi-value">${totalDias}</div><div class="kpi-sub">${rangoTxt}</div></div>
     <div class="kpi green"><span class="kpi-icon">✅</span><div class="kpi-label">Días trabajados</div><div class="kpi-value">${trabajados}</div><div class="kpi-sub">con al menos 1 viaje</div></div>
@@ -3846,10 +3941,25 @@ function render(){
       </div>`
   };
 
-  const contenidoGrupo = (_ordenGrupo[_grupoActivo]||[]).map(k=> builders[k] ? builders[k]() : '').join('\n');
+  // Cada sección se envuelve en un contenedor plegable. El encabezado se vuelve el interruptor:
+  // así el reporte se puede dejar en puras gráficas y KPIs, y las tablas largas (fechas sin
+  // actividad, detalle de viajes, desglose por concepto) se abren solo cuando hacen falta.
+  // El estado se recuerda por sección en el navegador, para no tener que recogerlas cada vez.
+  const contenidoGrupo = (_ordenGrupo[_grupoActivo]||[]).map(k=>{
+    if(!builders[k]) return '';
+    const html=builders[k]();
+    if(!html || !html.trim()) return '';
+    return `<section class="sec${_secCerrada(k)?' cerrada':''}" data-sec="${k}">${html}</section>`;
+  }).join('\n');
 
   document.getElementById('mainContent').innerHTML = `
   <div style="font-size:15px;font-weight:800;color:${GRUPO_COLOR[_grupoActivo]};margin:6px 0 4px;padding-bottom:8px;border-bottom:3px solid ${GRUPO_COLOR[_grupoActivo]}">${GRUPO_LABEL[_grupoActivo]}</div>
+  <div class="noprint" style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin:0 0 8px">
+    <span style="font-size:10.5px;color:var(--txt3)">Toca el título de cualquier sección para recogerla o abrirla.</span>
+    <button class="btn-exp" style="margin-left:auto;padding:5px 11px;font-size:11px" onclick="_secTodas(true)">▸ Recoger todo</button>
+    <button class="btn-exp" style="padding:5px 11px;font-size:11px" onclick="_secTodas(false)">▾ Abrir todo</button>
+    <button class="btn-exp" style="padding:5px 11px;font-size:11px" onclick="_secSoloGraficas()">📊 Solo gráficas</button>
+  </div>
   ${contenidoGrupo}
 
   <div class="export-bar">
