@@ -1441,13 +1441,16 @@ function _depAlertas(r,p){
     else if(espReal<esp/2) a.push('espesor real '+espReal.toFixed(1)+' cm vs '+esp+' cm teóricos — falta tonelaje para esa área');
   }
   if(_depFolioIdx){
+    const f=String(r.fecha||'');
     const v=String(r.vale||'').trim(), m=String(r.remision||'').trim();
-    // Un vale repetido NO es un error por sí solo: en carpeta, cuando una carga se reparte en dos
+    // Un folio repetido NO es un error por sí solo: en carpeta, cuando una carga se reparte en dos
     // colocaciones capturadas como registros separados, el vale se repite a propósito. Lo que hay
     // que verificar es que el TONELAJE esté repartido y no capturado completo en los dos. Por eso
-    // el aviso dice qué revisar, en vez de marcarlo como viaje malo.
-    if(v && (_depFolioIdx.vale[v]||[]).length>1) a.push('vale '+v+' en '+_depFolioIdx.vale[v].length+' registros — si es una carga repartida, revisa que el tonelaje esté dividido y no completo en cada uno');
-    if(m && (_depFolioIdx.rem[m]||[]).length>1) a.push('remisión '+m+' en '+_depFolioIdx.rem[m].length+' registros — revisa el reparto de tonelaje');
+    // el aviso dice qué revisar, en vez de marcarlo como viaje malo. Y solo cuenta dentro del
+    // MISMO día: entre días distintos es la planta reiniciando su numeración, no un problema.
+    const nv=v?(_depFolioIdx.vale[f+'|'+v]||[]).length:0, nm=m?(_depFolioIdx.rem[f+'|'+m]||[]).length:0;
+    if(nv>1) a.push('vale '+v+' en '+nv+' registros del MISMO día — si es una carga repartida, revisa que el tonelaje esté dividido y no completo en cada uno');
+    if(nm>1) a.push('remisión '+m+' en '+nm+' registros del MISMO día — revisa el reparto de tonelaje');
     if(v && m && v===m) a.push('vale y remisión con el mismo número');
   }
   return a;
@@ -4836,7 +4839,8 @@ window.exportarTablaExcel=function(){
         'De KM':v.kde!=null?+(+v.kde).toFixed(2):'', ML:0, 'A KM':v.ka!=null?+(+v.ka).toFixed(2):'',
         Ancho:0, 'm²':0, 'Espesor (cm)':0, 'm³':0, Ton:0, 'Esp.real(cm)':0, 'm³ Real (Ton/Dens)':0,
         'T.Prod':'', 'T.Tend':'',
-        'Regreso mezcla':(+v.regreso_ton||0)+' ton'+(v.vale?' · V:'+v.vale:'')+(v.remision?' · R:'+v.remision:'')+(v.observaciones?' · '+v.observaciones:'')});
+        'Regreso mezcla':(+v.regreso_ton||0)+' ton'+(v.vale?' · V:'+v.vale:'')+(v.remision?' · R:'+v.remision:'')+(v.observaciones?' · '+v.observaciones:''),
+        Vale:v.vale||'', 'Remisión':v.remision||''});
       return;
     }
     if(v.tipo==='cancelado'){
@@ -4845,7 +4849,8 @@ window.exportarTablaExcel=function(){
         'De KM':'', ML:0, 'A KM':'',
         Ancho:0, 'm²':0, 'Espesor (cm)':0, 'm³':0, Ton:0, 'Esp.real(cm)':0, 'm³ Real (Ton/Dens)':0,
         'T.Prod':'', 'T.Tend':'',
-        'Regreso mezcla':(v.can_horas||0)+' hrs espera'+(v.can_pago_estancia?' · PAGO ESTANCIA':'')+(v.observaciones?' · '+v.observaciones:'')});
+        'Regreso mezcla':(v.can_horas||0)+' hrs espera'+(v.can_pago_estancia?' · PAGO ESTANCIA':'')+(v.observaciones?' · '+v.observaciones:''),
+        Vale:v.vale||'', 'Remisión':v.remision||''});
       return;
     }
     _conceptosDe(v).forEach((c,ci)=>{
@@ -4864,11 +4869,13 @@ window.exportarTablaExcel=function(){
       Ancho:aw, 'm²':area, 'Espesor (cm)':esp, 'm³':vol, Ton:ton, 'Esp.real(cm)':er, 'm³ Real (Ton/Dens)':volReal,
       'T.Prod':v.temp_produccion!=null&&v.temp_produccion!==''?+v.temp_produccion:'',
       'T.Tend':v.temp_tendido!=null&&v.temp_tendido!==''?+v.temp_tendido:'',
-      'Regreso mezcla':''});
+      'Regreso mezcla':'', Vale:v.vale||'', 'Remisión':v.remision||''});
   });
   });
   if(!filas.length){ toast('No hay tiros en los días seleccionados','err'); return; }
-  const header=['ID','IDX','Fecha','Viaje','Placas','Material','Concepto','Carril','Sentido','De KM','ML','A KM','Ancho','m²','Espesor (cm)','m³','Ton','Esp.real(cm)','m³ Real (Ton/Dens)','T.Prod','T.Tend','Regreso mezcla'];
+  // Vale y Remisión son SOLO informativos: el import no los lee ni los reescribe. Están para poder
+  // revisar en Excel a qué documento corresponde cada viaje sin tener que abrir la app viaje por viaje.
+  const header=['ID','IDX','Fecha','Viaje','Placas','Material','Concepto','Carril','Sentido','De KM','ML','A KM','Ancho','m²','Espesor (cm)','m³','Ton','Esp.real(cm)','m³ Real (Ton/Dens)','T.Prod','T.Tend','Regreso mezcla','Vale','Remisión'];
   const ws=XLSX.utils.json_to_sheet(filas,{header});
   filas.forEach((f,i)=>{
     const R=i+2;
@@ -4884,7 +4891,7 @@ window.exportarTablaExcel=function(){
     // S m³ Real = Ton(Q) / densidad — volumen REALMENTE ejecutado, no el geométrico/teórico de P
     ws['S'+R]={t:'n', f:`Q${R}/${DEN_TIRO}`, v:f['m³ Real (Ton/Dens)']||0};
   });
-  ws['!cols']=[{wch:22},{wch:5},{wch:11},{wch:6},{wch:10},{wch:9},{wch:18},{wch:9},{wch:7},{wch:11},{wch:8},{wch:11},{wch:7},{wch:9},{wch:11},{wch:8},{wch:8},{wch:11},{wch:11},{wch:7},{wch:7},{wch:28}];
+  ws['!cols']=[{wch:22},{wch:5},{wch:11},{wch:6},{wch:10},{wch:9},{wch:18},{wch:9},{wch:7},{wch:11},{wch:8},{wch:11},{wch:7},{wch:9},{wch:11},{wch:8},{wch:8},{wch:11},{wch:11},{wch:7},{wch:7},{wch:28},{wch:9},{wch:10}];
   // Fila de TOTALES con fórmulas SUMA (m², m³, Ton, m³ Real)
   const tot=filas.length+2;
   ws['M'+tot]={t:'s',v:'TOTALES ▸'};
@@ -5133,7 +5140,8 @@ function _renderExtrasTabla(){
       const k=[x.tipo,x.lado,Math.round(+x.kde||0),Math.round(+x.ka||0)].join('|');
       const rep=(dups[k]||0)>1; if(rep) nDup++;
       return `<tr style="${rep?'background:rgba(239,68,68,.10)':''}">
-        <td style="padding:5px 7px;border-bottom:1px solid var(--bord)">${x.obra2||x.obra||''}${x.lado||x.carril||'—'}</td>
+        <td style="padding:5px 7px;border-bottom:1px solid var(--bord);color:var(--muted)">${x._tramo||'—'}</td>
+        <td style="padding:5px 7px;border-bottom:1px solid var(--bord)">${x.lado||x.carril||'—'}</td>
         <td style="padding:5px 7px;border-bottom:1px solid var(--bord);font-family:var(--mono);white-space:nowrap">${fc(x.kde)} → ${fc(x.ka)}</td>
         <td style="padding:5px 7px;border-bottom:1px solid var(--bord);text-align:right">${(+x.area||0).toFixed(2)}</td>
         <td style="padding:5px 7px;border-bottom:1px solid var(--bord);text-align:right;font-weight:700;color:var(--gold)">${(+x.vol||0).toFixed(3)}</td>
@@ -5144,6 +5152,7 @@ function _renderExtrasTabla(){
     return `<div style="border:1px solid var(--bord);border-radius:10px;margin-bottom:12px;overflow:hidden">
       <div style="padding:10px 12px;background:var(--surf)">
         <div style="font-weight:800;font-size:13px;color:#a78bfa">${g.tipo==='bacheo'?'BACHEO':'RENIVELACIÓN'} · ${g.items.length} bloque(s) · ${vol.toFixed(2)} m³</div>
+        <div style="font-size:11px;color:var(--gold);margin-top:2px">${Object.entries(g.items.reduce((m,x)=>{const t=x._tramo||'—';m[t]=(m[t]||0)+(+x.vol||0);return m;},{})).map(([t,v])=>`${t}: ${v.toFixed(2)} m³`).join(' · ')}</div>
         <div style="font-size:11px;color:var(--muted);margin-top:3px">
           Archivo: <b>${g.archivo||'(no se guardó el nombre — se subió antes de que la app lo registrara)'}</b><br>
           Subido por ${g.by||'—'} el ${fFecha(g.ts)}
@@ -5152,6 +5161,7 @@ function _renderExtrasTabla(){
       <div style="overflow:auto;max-height:46vh">
         <table style="width:100%;border-collapse:collapse;font-size:11.5px">
           <thead><tr style="position:sticky;top:0;background:var(--bg)">
+            <th style="padding:6px 7px;text-align:left;color:var(--muted);border-bottom:2px solid var(--bord)">Tramo</th>
             <th style="padding:6px 7px;text-align:left;color:var(--muted);border-bottom:2px solid var(--bord)">Lado</th>
             <th style="padding:6px 7px;text-align:left;color:var(--muted);border-bottom:2px solid var(--bord)">Cadenamiento</th>
             <th style="padding:6px 7px;text-align:right;color:var(--muted);border-bottom:2px solid var(--bord)">m²</th>
@@ -5201,7 +5211,7 @@ window.exportarExtrasExcel=function(){
   if(!lista.length){ toast('No hay extras que bajar','err'); return; }
   const dups=_extrasDups(lista);
   const filas=lista.slice().sort((a,b)=>String(a.tipo).localeCompare(String(b.tipo))||(+a.kde||0)-(+b.kde||0)).map(x=>({
-    Tipo:x.tipo, Tramo:x.obra2||'', Lado:x.lado||x.carril||'',
+    Tipo:x.tipo, Tramo:x._tramo||'', Lado:x.lado||x.carril||'',
     'De KM':+(+x.kde||0).toFixed(2), 'A KM':+(+x.ka||0).toFixed(2),
     'm²':+(+x.area||0).toFixed(2), 'm³':+(+x.vol||0).toFixed(3),
     Repetido:(dups[[x.tipo,x.lado,Math.round(+x.kde||0),Math.round(+x.ka||0)].join('|')]||0)>1?'SÍ':'',
@@ -5264,7 +5274,7 @@ function _rebuildExtras(){
     const obraDoc = x.obra || '039'; // compatibilidad: docs viejos sin campo "obra" son de la 039
     if(obraDoc!==obraActiva) return; // cada obra ve SOLO su propio volumen extra, nunca el de otra
     (x.bloques||[]).forEach((b,bi)=>_extras.push({...b,obra:obraDoc,extra:true,
-      _docId:x._id, _bi:bi, _ts:x.ts, _by:x.by, _archivo:x.archivo||null}));
+      _tramo:b.obra||null, _docId:x._id, _bi:bi, _ts:x.ts, _by:x.by, _archivo:x.archivo||null}));
   });
   const tv=document.getElementById('view-tiro');
   if(typeof renderTablaTiro==='function' && tv && tv.classList.contains('active')) renderTablaTiro();
