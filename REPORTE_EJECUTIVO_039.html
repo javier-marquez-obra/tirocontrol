@@ -2040,7 +2040,10 @@ let secciones={
 // ═══ GRUPOS (uno se ve a la vez, como pestañas) — dentro de cada grupo TODAS sus secciones van
 // prendidas siempre; lo único que se ajusta es el ORDEN en que aparecen (con las flechas ▲▼).
 const GRUPOS={
-  financiera:['financiero','conciliacion','programa','costos','gastos'],
+  // 'conciliacion' se retiró: capturar a mano los m³ de control por día no aportaba nada, porque
+  // el avance diario DEBE salir de TiroControl y punto. La función buildConciliacion sigue en el
+  // archivo por si algún día se quiere volver a prender — basta con agregarla aquí.
+  financiera:['financiero','programa','costos','gastos'],
   avances:['kpis','avance','graficas','espesor','faltante','balanceDias','larguillo'],
   analisis:['emulsion','tendencia','horarios','rutas','tabla']
 };
@@ -2718,8 +2721,12 @@ function buildGastos(recs){
     return {k,label:c.label,obra:c.obra,volCobro,cobro,gasto,util};
   });
 
+  // La tabla de "toneladas por corte, báscula vs calculado" ya NO se pinta: es un control interno
+  // de cómo se pesó cada viaje, no un dato financiero que se pueda enseñar. El código (prodHtml)
+  // se deja armado por si hiciera falta para una auditoría de báscula; basta con volver a
+  // intercalarlo aquí abajo para que aparezca.
+  void prodHtml;
   return `
-  ${prodHtml}
   <div class="section-hdr">💵 Gastos — ARMAQOP (productor y colocador de mezcla)</div>
   <div class="card">
     <div class="card-hdr"><h4>💵 Costo por volumen real colocado</h4><div class="meta">Vol. real (ton÷densidad), no geométrico</div></div>
@@ -3136,7 +3143,7 @@ function buildAvanceProgramado(recs){
         <div class="fin-kpi"><div class="fin-kpi-l">Real ejecutado</div><div class="fin-kpi-v">${_fmtMXNc(realFin[cur])}</div><div class="fin-kpi-s">${realVol[cur].toFixed(0)} m³</div></div>
         <div class="fin-kpi" style="border-color:${colDelta}"><div class="fin-kpi-l">${labelDelta}</div><div class="fin-kpi-v" style="color:${colDelta}">${_fmtMXNc(Math.abs(dFin))}</div><div class="fin-kpi-s" style="color:${colDelta}">${dVol>=0?'+':''}${dVol.toFixed(0)} m³ vs prog.</div></div>
       </div>
-      ${PROG_MESES.length<=16 ? `<div class="tbl-wrap" style="margin-top:10px">
+      ${PROG_MESES.length<=16 ? `<details class="noprint" style="margin-top:10px"><summary style="cursor:pointer;font-size:11px;color:var(--blue);font-weight:700;padding:6px 0;list-style:none">▸ Ver el detalle periodo por periodo (${PROG_MESES.length} ${_granLabel[_sGran].toLowerCase()})</summary><div class="tbl-wrap" style="margin-top:8px">
         <table class="cmp-tbl">` : `<div style="display:none"><table>`}
           <thead><tr>
             <th>PERIODO</th>
@@ -3167,7 +3174,7 @@ function buildAvanceProgramado(recs){
           }).join('')}
           </tbody>
         </table>
-      </div>
+      </div>${PROG_MESES.length<=16?'</details>':''}
       <div style="font-size:10px;color:var(--gray);margin-top:6px">Δ = real − programado · % PROG/REAL = del contrato total ($${(TOT_FIN/1e6).toFixed(1)}M / ${TOT_VOL} m³) · AVANCE = real ÷ programado del periodo${PROG_MESES.length>16?' · (tabla oculta en vista por día — usa semana/quincena/mes para el detalle)':''} · desde ${PROG_INICIO.split('-').reverse().join('/')}</div>
     </div>
   </div>
