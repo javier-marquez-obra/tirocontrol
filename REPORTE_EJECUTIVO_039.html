@@ -1024,7 +1024,9 @@ window.p039_nuevaEstimacion=function(){
   // Arranca donde terminó el último corte, para que no queden días sin estimar ni días duplicados.
   const ultimas=[..._p039_estimaciones].sort((a,b)=>p039_num(b.numero)-p039_num(a.numero));
   const desde=ultimas.length&&ultimas[0].fechaFin ? _isoDia(_addDays(ultimas[0].fechaFin,1)) : (_p039_config.fechaInicioReal||'');
-  _p039_formEst={numero:String(sig), fechaIni:desde, fechaFin:'', incluirExtra:false};
+  // modo 'manual' = arranca en ceros y tú escribes las cantidades (lo normal al armar un corte).
+  // modo 'viajes'  = las precarga con el volumen capturado en el rango de fechas.
+  _p039_formEst={numero:String(sig), fechaIni:desde, fechaFin:'', incluirExtra:false, modo:'manual'};
   renderCostos();
 };
 window.p039_setFormEst=function(campo,valor){ if(!_p039_formEst) return; _p039_formEst[campo]=valor; _conFoco(renderCostos); };
@@ -1033,12 +1035,18 @@ window.p039_guardarEstimacion=async function(){
   const f=_p039_formEst;
   if(!f.fechaIni||!f.fechaFin){ alert('Pon la fecha de inicio y la de cierre del corte'); return; }
   if(f.fechaFin<f.fechaIni){ alert('La fecha de cierre no puede ser antes que la de inicio'); return; }
-  const lineas=p039_calcularLineas(f.fechaIni,f.fechaFin,f.incluirExtra);
+  const manual=(f.modo||'manual')==='manual';
+  // En modo manual se arma el cuadro con TODOS los conceptos del catálogo en cero: etiqueta,
+  // unidad, código y precio ya puestos, para que lo único que se capture sea la cantidad.
+  const lineas = manual
+    ? p039_catalogoEfectivo().map(c=>({key:c.key, label:c.label, codigoSCT:c.codigoSCT||'',
+        unidad:c.unidad||'m³', cantidad:0, pu:p039_num(c.pu), importe:0}))
+    : p039_calcularLineas(f.fechaIni,f.fechaFin,f.incluirExtra);
   const total=lineas.reduce((s,l)=>s+l.importe,0);
-  if(total===0 && !confirm('En ese rango de fechas no hay volumen capturado — la estimación quedaría en $0.00. ¿La creas de todos modos?')) return;
+  if(!manual && total===0 && !confirm('En ese rango de fechas no hay volumen capturado — la estimación quedaría en $0.00. ¿La creas de todos modos?')) return;
   const nueva={id:Date.now().toString()+Math.random().toString(36).slice(2,6),
-    numero:f.numero, fechaIni:f.fechaIni, fechaFin:f.fechaFin,
-    incluirExtra:!!f.incluirExtra, cerrada:false, notas:'', lineas,
+    numero:f.numero, fechaIni:f.fechaIni, fechaFin:f.fechaFin, modo:(manual?'manual':'viajes'),
+    incluirExtra:(!manual && !!f.incluirExtra), cerrada:false, notas:'', lineas,
     creada:new Date().toISOString()};
   const ok=await guardarP039('estimaciones', [..._p039_estimaciones, nueva]);
   if(ok){ _p039_formEst=null; _p039_estAbierta=nueva.id; renderCostos(); }
@@ -1046,6 +1054,7 @@ window.p039_guardarEstimacion=async function(){
 window.p039_recalcularEst=async function(id){
   const est=_p039_estimaciones.find(e=>e.id===id); if(!est) return;
   if(p039_estAutorizada(est)){ alert('Esta estimación está autorizada. Ábrela primero si de verdad necesitas recalcularla.'); return; }
+  if(est.modo==='manual' && !confirm('Esta estimación la capturaste a mano.\n\nRecalcular BORRA tus cantidades y las reemplaza por el volumen de los viajes del '+(est.fechaIni||'?')+' al '+(est.fechaFin||'?')+'.\n\n¿Seguro?')) return;
   const manuales=(est.lineas||[]).filter(l=>l.manual).length;
   const aviso=manuales?('\n\nOJO: tienes '+manuales+' línea(s) que editaste a mano. El recálculo las va a pisar con lo que digan los viajes.'):'';
   if(!confirm('Vuelve a leer los viajes de ese rango y reescribe las cantidades. Úsalo si capturaste o corregiste viajes después de haber creado el corte.'+aviso+'\n\n¿Recalcular?')) return;
@@ -1070,27 +1079,34 @@ window.p039_setLinea=async function(estId, key, campo, valor){
   });
   await guardarP039('estimaciones', _p039_estimaciones.map(e=>e.id===estId?{...e,lineas}:e));
 };
+// Autorizar NO pide clave ni manda a Config. Antes, si no había clave guardada, te sacaba a la
+// pestaña de configuración a inventar una — justo cuando ibas a cerrar el corte. La clave queda
+// como algo OPCIONAL: si la tienes puesta, reabrir te la pide; si no, reabrir solo confirma.
 window.p039_autorizarEst=async function(id){
   const est=_p039_estimaciones.find(e=>e.id===id); if(!est) return;
-  if(!_p039_config.claveAutorizacion){
-    alert('Primero pon tu clave de autorización en la pestaña ⚙️ Config. Es la que te va a pedir para corregir una estimación ya autorizada.');
-    _p039_tab='config'; renderCostos(); return;
-  }
-  if(!confirm('Vas a AUTORIZAR la estimación '+est.numero+' por '+p039_money(p039_totalEstimacion(est))+'.\n\nQueda congelada: no se recalcula ni se edita, aunque después corrijas viajes de ese rango. Para moverla vas a necesitar tu clave.\n\n¿Autorizar?')) return;
-  await guardarP039('estimaciones', _p039_estimaciones.map(e=>e.id===id
+  const conClave=!!_p039_config.claveAutorizacion;
+  if(!confirm('Vas a AUTORIZAR la estimación '+est.numero+' por '+p039_money(p039_totalEstimacion(est))+'.\n\nQueda congelada: no se recalcula ni se edita, aunque después corrijas viajes de ese rango.\n\nPara moverla vas a tener que reabrirla'+(conClave?' con tu clave':'')+'.\n\n¿Autorizar?')) return;
+  const ok=await guardarP039('estimaciones', _p039_estimaciones.map(e=>e.id===id
     ? {...e, autorizada:true, cerrada:true, autorizadaEn:new Date().toISOString()} : e));
+  // Se queda en la estimación recién autorizada, abierta, para bajar el generador de inmediato.
+  if(ok!==false){ _p039_estAbierta=id; _p039_tab='estimaciones'; renderCostos(); }
 };
-// Reabrir SÍ pide clave: es el único camino para mover una estimación ya presentada.
+// Reabrir pide clave SOLO si hay una configurada. Sin clave, basta confirmar: el candado es
+// contra el descuido, no contra una persona con acceso — y obligar a inventar una clave para
+// poder trabajar era peor que no tenerla.
 window.p039_reabrirEst=function(id){
   const est=_p039_estimaciones.find(e=>e.id===id); if(!est) return;
-  p039_pedirClave('Reabrir la estimación '+est.numero+' para corregirla', async()=>{
-    await guardarP039('estimaciones', _p039_estimaciones.map(e=>e.id===id
+  const aplicar=async()=>{
+    const ok=await guardarP039('estimaciones', _p039_estimaciones.map(e=>e.id===id
       ? {...e, autorizada:false, cerrada:false, reabiertaEn:new Date().toISOString()} : e));
-  });
+    if(ok!==false){ _p039_estAbierta=id; renderCostos(); }
+  };
+  if(_p039_config.claveAutorizacion) p039_pedirClave('Reabrir la estimación '+est.numero+' para corregirla', aplicar);
+  else if(confirm('Reabrir la estimación '+est.numero+' para corregirla.\n\nVuelve a quedar editable. Si quieres que esto pida una clave, ponla en ⚙️ Config.\n\n¿Reabrir?')) aplicar();
 };
 window.p039_borrarEstimacion=async function(id){
   const est=_p039_estimaciones.find(e=>e.id===id);
-  if(est && p039_estAutorizada(est)){ alert('No se puede borrar una estimación autorizada. Reábrela primero con tu clave.'); return; }
+  if(est && p039_estAutorizada(est)){ alert('No se puede borrar una estimación autorizada. Reábrela primero.'); return; }
   if(!confirm('¿Borrar esta estimación? No se puede deshacer.')) return;
   await guardarP039('estimaciones', _p039_estimaciones.filter(e=>e.id!==id));
 };
@@ -1607,7 +1623,8 @@ function _p039RenderGenerador(){
   // ── Formulario de nueva estimación ──
   const formEst=_p039_formEst?(()=>{
     const f=_p039_formEst;
-    const preview=(f.fechaIni&&f.fechaFin&&f.fechaFin>=f.fechaIni)?p039_calcularLineas(f.fechaIni,f.fechaFin,f.incluirExtra):null;
+    const manual=(f.modo||'manual')==='manual';
+    const preview=(!manual && f.fechaIni&&f.fechaFin&&f.fechaFin>=f.fechaIni)?p039_calcularLineas(f.fechaIni,f.fechaFin,f.incluirExtra):null;
     const totPrev=preview?preview.reduce((s,l)=>s+l.importe,0):0;
     const volPrev=preview?preview.reduce((s,l)=>s+l.cantidad,0):0;
     return `<div class="card" style="margin-bottom:14px;border:1px solid #7c3aed">
@@ -1621,11 +1638,25 @@ function _p039RenderGenerador(){
           <div><label style="font-size:10px;color:var(--gray)">Al</label>
             <input id="p039_fe_fechaFin" type="date" value="${f.fechaFin||''}" onchange="p039_setFormEst('fechaFin',this.value)" style="width:100%;padding:8px;border:1px solid var(--gray2);border-radius:6px"></div>
         </div>
-        <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:10px;cursor:pointer">
+        <div style="margin-bottom:10px">
+          <div style="font-size:10px;color:var(--gray);text-transform:uppercase;margin-bottom:5px">¿De dónde salen las cantidades?</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <label style="flex:1 1 230px;display:flex;gap:8px;align-items:flex-start;padding:9px 11px;border:2px solid ${manual?'#7c3aed':'var(--gray2)'};border-radius:8px;cursor:pointer;background:${manual?'#faf5ff':'transparent'}">
+              <input type="radio" name="p039modo" ${manual?'checked':''} onchange="p039_setFormEst('modo','manual')" style="margin-top:2px">
+              <span><b style="font-size:12px">Las escribo yo</b><br><span style="font-size:10.5px;color:var(--gray)">Arranca en ceros con todos los conceptos del catálogo. Pones la cantidad de cada uno.</span></span>
+            </label>
+            <label style="flex:1 1 230px;display:flex;gap:8px;align-items:flex-start;padding:9px 11px;border:2px solid ${manual?'var(--gray2)':'#7c3aed'};border-radius:8px;cursor:pointer;background:${manual?'transparent':'#faf5ff'}">
+              <input type="radio" name="p039modo" ${manual?'':'checked'} onchange="p039_setFormEst('modo','viajes')" style="margin-top:2px">
+              <span><b style="font-size:12px">Calcularlas de los viajes</b><br><span style="font-size:10.5px;color:var(--gray)">Toma el volumen capturado en el rango de fechas. Después lo puedes corregir.</span></span>
+            </label>
+          </div>
+        </div>
+        ${manual?'':`<label style="display:flex;align-items:center;gap:8px;font-size:12px;margin-bottom:10px;cursor:pointer">
           <input id="p039_fe_incluirExtra" type="checkbox" ${f.incluirExtra?'checked':''} onchange="p039_setFormEst('incluirExtra',this.checked)">
           <span>Incluir volumen extra importado por Excel (reniv/bacheo sin viaje)</span>
-        </label>
-        ${f.incluirExtra?`<div style="font-size:10px;color:#7c3aed;background:#f5f3ff;border-radius:6px;padding:8px;margin-bottom:10px">El volumen extra no trae fecha propia, así que entra COMPLETO en esta estimación sin importar el rango. Normalmente se marca solo en un corte, para no cobrarlo dos veces.</div>`:''}
+        </label>`}
+        ${!manual&&f.incluirExtra?`<div style="font-size:10px;color:#7c3aed;background:#f5f3ff;border-radius:6px;padding:8px;margin-bottom:10px">El volumen extra no trae fecha propia, así que entra COMPLETO en esta estimación sin importar el rango — por eso puede salir un número que no corresponde a esos días. Normalmente se marca solo en un corte, para no cobrarlo dos veces.</div>`:''}
+        ${manual?`<div style="font-size:11px;color:var(--gray);background:var(--surf);border:1px solid var(--gray2);border-radius:8px;padding:9px 11px;margin-bottom:10px">Al guardar se abre el cuadro con <b>los ${cat.length} conceptos del catálogo</b>, su unidad y su precio, todo en cero. Tú escribes nada más la cantidad de cada renglón y el importe se calcula solo.</div>`:''}
         ${preview?`<div style="background:var(--surf);border:1px solid var(--gray2);border-radius:8px;padding:10px;margin-bottom:10px">
           <div style="font-size:10px;font-weight:700;color:var(--gray);text-transform:uppercase;margin-bottom:6px">Vista previa del corte</div>
           ${preview.filter(l=>l.cantidad>0).map(l=>`<div style="display:flex;justify-content:space-between;font-size:11px;padding:2px 0">
@@ -1672,7 +1703,10 @@ function _p039RenderGenerador(){
             // Concepto, unidad, precio y código vienen del catálogo: no hay que escribirlos.
             // Lo único que se captura es la CANTIDAD de este corte, y por eso su campo va marcado.
             const cat=(p039_catalogoEfectivo().find(c=>c.key===l.key))||{};
-            const meta=p039_num(cat.cantidad);
+            // El campo del catálogo es volContrato (cantidad era de los renglones de PRESUPUESTO,
+            // otra cosa). Con el nombre equivocado meta salía 0 y las columnas Contrato y Por
+            // cobrar se quedaban en '—' siempre.
+            const meta=p039_num(cat.volContrato);
             const porCobrar=meta>0?(meta-ant-act):null;
             const excede=porCobrar!=null && porCobrar<-0.01;
             const celda=(campo,val)=>aut
