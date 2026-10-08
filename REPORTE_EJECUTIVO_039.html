@@ -1138,6 +1138,71 @@ window.p039_setNotaEst=async function(id,v){
   await guardarP039('estimaciones', _p039_estimaciones.map(e=>e.id===id?{...e,notas:v}:e));
 };
 window.p039_toggleEst=function(id){ _p039_estAbierta=_p039_estAbierta===id?null:id; renderCostos(); };
+// ── GENERADOR DE UNA ESTIMACIÓN (Excel) ──
+// El papel que se entrega por cada corte: concepto, unidad, cantidad anterior, la de este corte,
+// el acumulado, el precio unitario y el importe. Es el mismo cuadro de la pantalla, en archivo.
+window.p039_exportEst=function(id){
+  if(typeof XLSX==='undefined'){ alert('No cargó la librería de Excel — revisa tu conexión.'); return; }
+  const e=_p039_estimaciones.find(x=>x.id===id); if(!e){ alert('No encontré esa estimación'); return; }
+  const ant=p039_acumuladoAnterior(e);
+  const cat=p039_catalogoEfectivo();
+  const filas=(e.lineas||[]).map(l=>{
+    const c=cat.find(x=>x.key===l.key)||{};
+    const a=ant[l.key]||0, act=p039_num(l.cantidad), vc=p039_num(c.volContrato);
+    return {
+      'Código SCT':l.codigoSCT||c.codigoSCT||'', Concepto:l.label, Unidad:l.unidad||'m³',
+      'Cant. anterior':+a.toFixed(2), 'Cant. este corte':+act.toFixed(2),
+      'Cant. acumulada':+(a+act).toFixed(2), 'Vol. contrato':+vc.toFixed(2),
+      'Por cobrar':+(vc-a-act).toFixed(2),
+      'P.U.':+p039_num(l.pu).toFixed(2), 'Importe del corte':+p039_num(l.importe).toFixed(2)
+    };
+  });
+  const enc=[
+    ['ESTIMACIÓN No.', e.numero],
+    ['Periodo', (e.fechaIni||'')+' al '+(e.fechaFin||'')],
+    ['Estado', p039_estAutorizada(e)?('AUTORIZADA'+(e.autorizadaEn?' el '+e.autorizadaEn.slice(0,10):'')):'ABIERTA (no autorizada)'],
+    ['Importe del corte', p039_totalEstimacion(e)],
+    ['Notas', e.notas||''],
+    []
+  ];
+  const ws=XLSX.utils.aoa_to_sheet(enc);
+  XLSX.utils.sheet_add_json(ws, filas, {origin:'A'+(enc.length+1)});
+  ws['!cols']=[{wch:22},{wch:26},{wch:8},{wch:14},{wch:16},{wch:16},{wch:14},{wch:12},{wch:12},{wch:17}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Estimación '+e.numero);
+  XLSX.writeFile(wb, `ESTIMACION_${String(e.numero).padStart(2,'0')}_N27_${(e.fechaFin||'').slice(0,10)}.xlsx`);
+};
+// ── ACUMULADO DE TODAS LAS ESTIMACIONES (Excel) ──
+// Una columna por corte más acumulado, contrato y saldo. Es el resumen que pide el cliente
+// cuando quiere ver el avance de cobro completo sin revisar estimación por estimación.
+window.p039_exportAcumulado=function(){
+  if(typeof XLSX==='undefined'){ alert('No cargó la librería de Excel — revisa tu conexión.'); return; }
+  const ord=[..._p039_estimaciones].sort((a,b)=>p039_num(a.numero)-p039_num(b.numero));
+  if(!ord.length){ alert('Todavía no hay estimaciones guardadas.'); return; }
+  const cat=p039_catalogoEfectivo();
+  const cantEn=(e,k)=>p039_num(((e.lineas||[]).find(l=>l.key===k)||{}).cantidad);
+  const filas=cat.map(c=>{
+    const f={Concepto:c.label, Tramo:c.obra||'', Unidad:c.unidad||'m³'};
+    let ac=0;
+    ord.forEach(e=>{ const v=cantEn(e,c.key); f['Est. '+e.numero]=+v.toFixed(2); ac+=v; });
+    const vc=p039_num(c.volContrato);
+    f['Acumulado']=+ac.toFixed(2); f['Vol. contrato']=+vc.toFixed(2);
+    f['Por cobrar']=+(vc-ac).toFixed(2);
+    f['P.U.']=+p039_num(c.pu).toFixed(2);
+    f['Importe acumulado']=+(ac*p039_num(c.pu)).toFixed(2);
+    return f;
+  });
+  const tot={Concepto:'TOTAL', Tramo:'', Unidad:''};
+  ord.forEach(e=>{ tot['Est. '+e.numero]=+p039_totalEstimacion(e).toFixed(2); });
+  tot['Acumulado']=''; tot['Vol. contrato']=''; tot['Por cobrar']=''; tot['P.U.']='';
+  tot['Importe acumulado']=+filas.reduce((s2,f)=>s2+(f['Importe acumulado']||0),0).toFixed(2);
+  filas.push(tot);
+  const ws=XLSX.utils.json_to_sheet(filas);
+  ws['!cols']=[{wch:26},{wch:8},{wch:8},...ord.map(()=>({wch:12})),{wch:13},{wch:14},{wch:12},{wch:12},{wch:18}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Acumulado');
+  XLSX.writeFile(wb, `ESTIMACIONES_ACUMULADO_N27_${new Date().toISOString().slice(0,10)}.xlsx`);
+};
 
 // ── Config ──
 window.p039_agregarGrupo=function(){
@@ -1479,25 +1544,50 @@ function _p039RenderGenerador(){
   </div>`;
 
   // ── Catálogo de cobro ──
+  // ¿Cuál es "esta estimación"? La que está desplegada; si ninguna, la última sin autorizar
+  // (la que se está armando); si todas están autorizadas, la última. Es la que importa para
+  // saber cuánto se va a cobrar AHORA, que es el dato que se busca al preparar un corte.
+  const _estActual=(()=>{
+    if(_p039_estAbierta){ const e=_p039_estimaciones.find(x=>x.id===_p039_estAbierta); if(e) return e; }
+    const orden=[..._p039_estimaciones].sort((a2,b2)=>p039_num(b2.numero)-p039_num(a2.numero));
+    return orden.find(e=>!p039_estAutorizada(e)) || orden[0] || null;
+  })();
+  const _enEsta={};
+  if(_estActual) (_estActual.lineas||[]).forEach(l=>{ _enEsta[l.key]=p039_num(l.cantidad); });
   const filasCat=cat.map(c=>{
     const vc=p039_num(c.volContrato), pu=p039_num(c.pu), ac=acumTotal[c.key]||0;
     const saldo=vc-ac, pct=vc>0?(ac/vc*100):0;
+    const esta=_enEsta[c.key]||0;        // lo que se cobra en el corte en curso
+    const antes=ac-esta;                 // lo ya cobrado en estimaciones anteriores
+    const u=c.unidad||'m³';
+    const dato=(lbl,val,color,fuerte)=>`<div style="flex:1 1 110px;min-width:96px">
+        <div style="font-size:9px;color:var(--gray);text-transform:uppercase;letter-spacing:.04em">${lbl}</div>
+        <div style="font-family:monospace;font-size:${fuerte?'15px':'13px'};font-weight:${fuerte?'800':'700'};color:${color||'var(--txt)'}">${val}</div></div>`;
     return `<div style="background:var(--surf);border:1px solid var(--gray2);border-radius:8px;padding:10px;margin-bottom:6px">
       <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
         <div style="font-weight:700;font-size:13px">${c.label} <span style="font-size:10px;color:var(--gray);font-weight:400">${c.obra||''}</span></div>
         <div style="font-size:12px;font-weight:700;font-family:monospace">${p039_money(vc*pu)}</div>
       </div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px">
-        <div><label style="font-size:9px;color:var(--gray);text-transform:uppercase">Código SCT</label>
-          <input value="${c.codigoSCT||''}" onchange="p039_setCatCampo('${c.key}','codigoSCT',this.value)" placeholder="—" style="width:100%;padding:6px;border:1px solid var(--gray2);border-radius:6px;font-family:monospace;font-size:11px"></div>
-        <div><label style="font-size:9px;color:var(--gray);text-transform:uppercase">Vol. contrato</label>
-          <input value="${vc}" onchange="p039_setCatCampo('${c.key}','volContrato',this.value)" style="width:100%;padding:6px;border:1px solid var(--gray2);border-radius:6px;font-family:monospace;font-size:11px"></div>
+      <!-- El código SCT salió de aquí: el nombre del concepto ya lo identifica y teclearlo no
+           aportaba nada. El campo sigue en el dato guardado, nada más que ya no se captura. -->
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-top:8px">
+        <div><label style="font-size:9px;color:var(--gray);text-transform:uppercase">Vol. contrato (${u})</label>
+          <input value="${vc}" inputmode="decimal" onchange="p039_setCatCampo('${c.key}','volContrato',this.value)" style="width:100%;padding:6px;border:1px solid var(--gray2);border-radius:6px;font-family:monospace;font-size:11px"></div>
         <div><label style="font-size:9px;color:var(--gray);text-transform:uppercase">P.U.</label>
-          <input value="${pu}" onchange="p039_setCatCampo('${c.key}','pu',this.value)" style="width:100%;padding:6px;border:1px solid var(--gray2);border-radius:6px;font-family:monospace;font-size:11px"></div>
+          <input value="${pu}" inputmode="decimal" onchange="p039_setCatCampo('${c.key}','pu',this.value)" style="width:100%;padding:6px;border:1px solid var(--gray2);border-radius:6px;font-family:monospace;font-size:11px"></div>
       </div>
-      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--gray);margin-top:8px;padding-top:6px;border-top:1px solid var(--gray2)">
-        <span>Estimado: <strong style="color:var(--txt)">${ac.toFixed(2)}</strong> / ${vc} ${c.unidad||'m³'} (${pct.toFixed(1)}%)</span>
-        <span>Saldo: <strong style="color:${saldo<0?'#dc2626':'var(--txt)'}">${saldo.toFixed(2)}</strong> ${c.unidad||'m³'}</span>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:9px;padding-top:8px;border-top:1px solid var(--gray2)">
+        ${dato('Cobrado antes', antes.toFixed(2)+' '+u, 'var(--gray)')}
+        ${dato(_estActual?('En esta estimación'+(_estActual.numero?' #'+_estActual.numero:'')):'En esta estimación', esta.toFixed(2)+' '+u, esta>0?'#7c3aed':'var(--gray)', true)}
+        ${dato('Por cobrar', saldo.toFixed(2)+' '+u, saldo<-0.01?'#dc2626':(saldo<0.01?'var(--green)':'var(--txt)'), true)}
+        ${dato('Total contrato', vc.toFixed(2)+' '+u, 'var(--gray)')}
+      </div>
+      <div style="margin-top:7px">
+        <div style="height:6px;background:var(--gray2);border-radius:99px;overflow:hidden;display:flex">
+          <div style="width:${Math.max(0,Math.min(100,vc>0?antes/vc*100:0))}%;background:#94a3b8"></div>
+          <div style="width:${Math.max(0,Math.min(100,vc>0?esta/vc*100:0))}%;background:#7c3aed"></div>
+        </div>
+        <div style="font-size:9.5px;color:var(--gray);margin-top:3px">${pct.toFixed(1)}% del contrato estimado${saldo<-0.01?' · <b style="color:#dc2626">se pasó '+Math.abs(saldo).toFixed(2)+' '+u+' del contrato</b>':''}</div>
       </div>
     </div>`;
   }).join('');
@@ -1613,6 +1703,7 @@ function _p039RenderGenerador(){
         <textarea ${aut?'disabled style="background:var(--surf);opacity:.7;"':''} onchange="p039_setNotaEst('${e.id}',this.value)" placeholder="Observaciones, número de oficio, quién la recibió..." style="width:100%;min-height:50px;padding:8px;border:1px solid var(--gray2);border-radius:6px;font-size:11px">${e.notas||''}</textarea>
       </div>
       <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
+        <button class="btn-exp" onclick="p039_exportEst('${e.id}')" title="Baja el generador de este corte: concepto, unidad, cantidad anterior, la de este corte, acumulado, P.U. e importe">⬇ Generador (Excel)</button>
         ${aut
           ? `<button class="btn-exp" style="color:#b45309;border-color:#b45309" onclick="p039_reabrirEst('${e.id}')">🔑 Corregir (pide clave)</button>`
           : `<button class="btn-exp" onclick="p039_recalcularEst('${e.id}')">↻ Recalcular</button>
@@ -1652,10 +1743,62 @@ function _p039RenderGenerador(){
     </div>
   </div>`:'';
 
+  // ── CUADRO ACUMULADO DE ESTIMACIONES ──
+  // Una columna por estimación guardada (#1, #2, #3…), más el acumulado y lo que falta por cobrar.
+  // Es el cuadro que se entrega: de un vistazo se ve qué se cobró en cada corte, cuánto llevas del
+  // contrato y qué queda. Sin esto había que abrir cada estimación y sumar a mano.
+  const acumTbl=(()=>{
+    if(!ordenadas.length) return '';
+    const u=c=>c.unidad||'m³';
+    const cantEn=(e,k)=>p039_num(((e.lineas||[]).find(l=>l.key===k)||{}).cantidad);
+    const impEn =(e,k)=>p039_num(((e.lineas||[]).find(l=>l.key===k)||{}).importe);
+    const totCorte=e=>p039_totalEstimacion(e);
+    const filas=cat.map(c=>{
+      const vc=p039_num(c.volContrato);
+      const porEst=ordenadas.map(e=>cantEn(e,c.key));
+      const ac=porEst.reduce((x,y)=>x+y,0);
+      const falta=vc-ac, exc=falta<-0.01;
+      return `<tr style="border-bottom:1px solid var(--gray2)">
+        <td style="padding:6px;font-weight:600">${c.label}<span style="font-size:9px;color:var(--gray);font-weight:400"> ${c.obra||''}</span></td>
+        ${porEst.map(v=>`<td style="padding:6px;text-align:right;font-family:monospace;color:${v>0?'var(--txt)':'var(--gray)'}">${v>0?v.toFixed(2):'—'}</td>`).join('')}
+        <td style="padding:6px;text-align:right;font-family:monospace;font-weight:800">${ac.toFixed(2)}</td>
+        <td style="padding:6px;text-align:right;font-family:monospace;color:var(--gray)">${vc.toFixed(2)}</td>
+        <td style="padding:6px;text-align:right;font-family:monospace;font-weight:700;color:${exc?'#dc2626':(Math.abs(falta)<0.01?'var(--green)':'var(--txt)')}">${falta.toFixed(2)}${exc?' ⚠️':''}</td>
+      </tr>`;
+    }).join('');
+    const totAcum=ordenadas.reduce((x,e)=>x+totCorte(e),0);
+    return `<div class="card" style="margin-bottom:12px">
+      <div class="card-hdr"><h4>📊 Acumulado de estimaciones</h4><div class="meta">${ordenadas.length} corte(s) · ${p039_money(totAcum)} estimado</div></div>
+      <div class="card-body"><div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:11px">
+          <thead><tr style="background:var(--surf)">
+            <th style="padding:6px;text-align:left">Concepto</th>
+            ${ordenadas.map(e=>`<th style="padding:6px;text-align:right;white-space:nowrap">${p039_estAutorizada(e)?'🔒':'✏️'} Est. ${e.numero}</th>`).join('')}
+            <th style="padding:6px;text-align:right">Acumulado</th>
+            <th style="padding:6px;text-align:right">Contrato</th>
+            <th style="padding:6px;text-align:right">Por cobrar</th>
+          </tr></thead>
+          <tbody>${filas}</tbody>
+          <tfoot>
+            <tr style="background:var(--surf);font-weight:800">
+              <td style="padding:6px">IMPORTE DEL CORTE</td>
+              ${ordenadas.map(e=>`<td style="padding:6px;text-align:right;font-family:monospace">${p039_money(totCorte(e))}</td>`).join('')}
+              <td style="padding:6px;text-align:right;font-family:monospace;color:var(--gold)">${p039_money(totAcum)}</td>
+              <td style="padding:6px;text-align:right;font-family:monospace;color:var(--gray)">${p039_money(totalContrato)}</td>
+              <td style="padding:6px;text-align:right;font-family:monospace;color:${totalContrato-totAcum<0?'#dc2626':'var(--txt)'}">${p039_money(totalContrato-totAcum)}</td>
+            </tr>
+          </tfoot>
+        </table></div>
+        <div style="font-size:10px;color:var(--gray);margin-top:8px">🔒 autorizada (congelada) · ✏️ abierta (todavía se puede editar). "Por cobrar" se marca en rojo cuando el acumulado pasa del volumen de catálogo — para SICT ese tope se respeta; con un particular puede haber ampliación, ahí tú decides.</div>
+        <div style="margin-top:10px"><button class="btn-exp" onclick="p039_exportAcumulado()">⬇ Bajar acumulado a Excel</button></div>
+      </div></div>`;
+  })();
+
   const bloqueEst=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
       <div style="font-size:13px;font-weight:800">🧾 Estimaciones por corte</div>
       ${_p039_formEst?'':'<button class="btn-exp primary" onclick="p039_nuevaEstimacion()">+ Nueva estimación</button>'}
     </div>
+    ${acumTbl}
     ${formEst}
     ${ordenadas.length?listaEst:'<div class="card"><div class="card-body" style="color:var(--gray);font-size:12px">Todavía no hay estimaciones. Crea la primera con el botón de arriba — las cantidades se calculan solas con los viajes capturados en el rango de fechas que elijas.</div></div>'}`;
 
