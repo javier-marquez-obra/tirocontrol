@@ -314,7 +314,7 @@ tbody tr:hover td{background:var(--blue4)}
            worker seguía sirviendo una copia vieja. Ahora se lee de un vistazo. -->
       <div id="buildChip" onclick="forzarActualizacionRep()" title="Versión cargada. Clic para forzar la descarga de la última y limpiar el caché."
         style="background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:5px 10px;font-size:10.5px;font-family:var(--mono,monospace);color:#fff;cursor:pointer;margin-right:8px;white-space:nowrap">
-        v 08-Oct 19:58 · ↻
+        v 08-Oct 20:22 · ↻
       </div>
       <div class="sync-chip" id="syncChip" onclick="loadData()">
         <span id="syncDot" style="width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block"></span>
@@ -3315,11 +3315,14 @@ function buildFinanciero(exec){
   // (esos imports no traen dato de tonelaje real) — por eso su "ganancia" no es un ahorro de material como
   // en carpeta, sino simplemente volumen reconocido sin peso capturado. El KPI "M³ GANANCIA" de arriba
   // ahora es la suma de este mismo total (todos los conceptos), esta tabla es su desglose.
-  const extrasExec=calcExtras();
+  // OJO: el 'exec' que llega aquí YA trae el volumen extra sumado — se le mete arriba, antes de
+  // llamar a esta función (Object.keys(exec).forEach(k=>exec[k]+=extrasExec[k])). Aquí se volvía a
+  // sumar calcExtras(), así que los 360.08 m³ de generador se contaban DOS VECES: la tabla daba
+  // 5771.12 m³ cuando el KPI de arriba, que sí está bien, daba 5411.03. La diferencia era exacta.
   const volReal={reniv:0,carp3:0,bach1:0,carp5:0,bach2:0};
   filtered.forEach(r=>{ _volRealPorConcepto(r).forEach(x=>{ if(volReal[x.key]!=null) volReal[x.key]+=x.vol; }); });
   const filasGan=keys.map(k=>{
-    const geo=(exec[k]||0)+(extrasExec[k]||0);
+    const geo=(exec[k]||0);
     const real=volReal[k]||0;
     return {k,label:CAT[k].label,geo,real,gan:geo-real};
   });
