@@ -1,7 +1,7 @@
 // TENDIDO 039 · Service Worker · v6 · PRECARGA en install (para que quede lista sin internet
 // desde el momento en que se instala, no hasta la primera apertura exitosa) + network-first
 // CON LÍMITE DE TIEMPO en HTML, con respaldo en caché para no quedarse pegado con señal lenta.
-const CACHE = 'tendido039-v7';
+const CACHE = 'tendido039-v8';
 const HTML_TIMEOUT_MS = 4000; // si la red no responde en 4s, usa la última copia guardada
 // Archivos esenciales para poder abrir la app sin internet — se descargan de una vez al instalar.
 const PRECACHE_URLS = [

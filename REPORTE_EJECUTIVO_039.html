@@ -309,6 +309,13 @@ tbody tr:hover td{background:var(--blue4)}
       <div class="header-sub">Contrato 2026-14-CB-D-039-W-00-2026 · Costa Jalisco · N-27 · 2026</div>
     </div>
     <div class="header-right">
+      <!-- Sello de versión. Sin esto no había forma de saber qué archivo está cargado: se pasaba
+           media tarde adivinando por síntomas si la subida a GitHub había tomado o si el service
+           worker seguía sirviendo una copia vieja. Ahora se lee de un vistazo. -->
+      <div id="buildChip" onclick="forzarActualizacionRep()" title="Versión cargada. Clic para forzar la descarga de la última y limpiar el caché."
+        style="background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:5px 10px;font-size:10.5px;font-family:var(--mono,monospace);color:#fff;cursor:pointer;margin-right:8px;white-space:nowrap">
+        v 08-Oct 19:36 · ↻
+      </div>
       <div class="sync-chip" id="syncChip" onclick="loadData()">
         <span id="syncDot" style="width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block"></span>
         <span id="syncLabel">Conectando...</span>
@@ -1179,6 +1186,36 @@ window.p039_recuperarClave=async function(){
 window.p039_setNotaEst=async function(id,v){
   await guardarP039('estimaciones', _p039_estimaciones.map(e=>e.id===id?{...e,notas:v}:e));
 };
+// Quita de TODAS las estimaciones los renglones cuya clave ya no existe en el catálogo. Solo
+// toca las que no están autorizadas; una autorizada se avisa para que se reabra a propósito.
+window.p039_limpiarHuerfanas=async function(){
+  const keys=new Set(p039_catalogoEfectivo().map(c=>c.key));
+  const bloq=[]; let quitados=0, importe=0;
+  const nuevas=_p039_estimaciones.map(e=>{
+    const sobra=(e.lineas||[]).filter(l=>!keys.has(l.key));
+    if(!sobra.length) return e;
+    if(p039_estAutorizada(e)){ bloq.push(e.numero); return e; }
+    quitados+=sobra.length; importe+=sobra.reduce((s,l)=>s+p039_num(l.importe),0);
+    return {...e, lineas:(e.lineas||[]).filter(l=>keys.has(l.key))};
+  });
+  if(!quitados){
+    alert(bloq.length
+      ? 'Los renglones sobrantes están en estimaciones AUTORIZADAS ('+bloq.join(', ')+'). Reábrelas primero y vuelve a intentar.'
+      : 'No hay renglones sobrantes que quitar.');
+    return;
+  }
+  if(!confirm('Quitar '+quitados+' renglón(es) por '+p039_money(importe)+' de las estimaciones abiertas.\n\nEsos renglones no corresponden a ningún concepto del catálogo.'+(bloq.length?'\n\nOJO: las estimaciones '+bloq.join(', ')+' están autorizadas y NO se tocan.':'')+'\n\n¿Continuar?')) return;
+  const ok=await guardarP039('estimaciones', nuevas);
+  if(ok!==false) renderCostos();
+};
+// Fuerza la última versión: borra los cachés del service worker, lo da de baja y recarga con un
+// parámetro nuevo en la URL para que ni el navegador ni GitHub Pages sirvan una copia guardada.
+window.forzarActualizacionRep=async function(){
+  if(!confirm('Voy a borrar el caché local y recargar para traer la última versión publicada.\n\nNo se pierde ningún dato: todo vive en la nube.\n\n¿Continuar?')) return;
+  try{ if('caches' in window){ const ks=await caches.keys(); await Promise.all(ks.map(k=>caches.delete(k))); } }catch(e){}
+  try{ if(navigator.serviceWorker){ const rs=await navigator.serviceWorker.getRegistrations(); await Promise.all(rs.map(r=>r.unregister())); } }catch(e){}
+  const u=new URL(location.href); u.searchParams.set('v', Date.now()); location.replace(u.toString());
+};
 window.p039_toggleEst=function(id){ _p039_estAbierta=_p039_estAbierta===id?null:id; renderCostos(); };
 // ── GENERADOR DE UNA ESTIMACIÓN (Excel) ──
 // El papel que se entrega por cada corte: concepto, unidad, cantidad anterior, la de este corte,
@@ -1569,7 +1606,40 @@ function _p039RenderGenerador(){
   const cobradoTotal=_p039_estimaciones.reduce((s,e)=>s+p039_totalEstimacion(e),0);
   const pctCobrado=totalContrato>0?(cobradoTotal/totalContrato*100):0;
 
-  const resumen=`<div class="card" style="margin-bottom:14px">
+  // ── LÍNEAS HUÉRFANAS ──
+  // Una estimación guarda sus líneas con la clave del concepto. Si el catálogo cambia (se renombra
+  // un concepto, se borra, o la línea se creó con un id que ya no existe), esa línea SIGUE sumando
+  // al total de la estimación pero deja de aparecer en las tarjetas por concepto, que recorren el
+  // catálogo actual. Resultado: el acumulado pasa del contrato por un importe que no se ve en
+  // ningún renglón. Aquí se detectan, se enseñan y se pueden quitar.
+  const _keysCat=new Set(cat.map(c=>c.key));
+  const _huerfanas=[];
+  _p039_estimaciones.forEach(e=>{
+    (e.lineas||[]).forEach(l=>{
+      if(_keysCat.has(l.key)) return;
+      _huerfanas.push({est:e.numero, key:l.key, label:l.label||l.key,
+        cantidad:p039_num(l.cantidad), unidad:l.unidad||'m³', importe:p039_num(l.importe)});
+    });
+  });
+  const _impHuerf=_huerfanas.reduce((s2,h)=>s2+h.importe,0);
+  const avisoHuerf=_huerfanas.length?`<div class="card" style="margin-bottom:14px;border:2px solid #dc2626">
+    <div class="card-hdr"><h4 style="color:#dc2626">⚠️ ${_huerfanas.length} renglón(es) que no son de ningún concepto del catálogo</h4>
+      <div class="meta" style="color:#dc2626">${p039_money(_impHuerf)}</div></div>
+    <div class="card-body">
+      <div style="font-size:12px;color:var(--txt2);margin-bottom:10px">Estos renglones <b>sí suman</b> al importe estimado, pero no aparecen en ninguna tarjeta del catálogo — por eso el total se pasa del contrato sin que se vea dónde. Pasa cuando se renombra o se borra un concepto después de haber hecho una estimación.</div>
+      <table style="width:100%;border-collapse:collapse;font-size:11.5px">
+        <thead><tr style="background:var(--surf)"><th style="padding:5px;text-align:left">Est.</th><th style="padding:5px;text-align:left">Renglón</th><th style="padding:5px;text-align:left">Clave guardada</th><th style="padding:5px;text-align:right">Cantidad</th><th style="padding:5px;text-align:right">Importe</th></tr></thead>
+        <tbody>${_huerfanas.map(h=>`<tr style="border-bottom:1px solid var(--gray2)">
+          <td style="padding:5px">#${h.est}</td><td style="padding:5px">${h.label}</td>
+          <td style="padding:5px;font-family:monospace;color:var(--gray)">${h.key}</td>
+          <td style="padding:5px;text-align:right;font-family:monospace">${h.cantidad.toFixed(2)} ${h.unidad}</td>
+          <td style="padding:5px;text-align:right;font-family:monospace;font-weight:700">${p039_money(h.importe)}</td></tr>`).join('')}</tbody>
+      </table>
+      <div style="margin-top:10px"><button class="btn-exp" style="border-color:#dc2626;color:#dc2626" onclick="p039_limpiarHuerfanas()">🧹 Quitar estos renglones</button></div>
+    </div>
+  </div>`:'';
+
+  const resumen=avisoHuerf+`<div class="card" style="margin-bottom:14px">
     <div class="card-hdr"><h4>Cobro acumulado vs contrato</h4></div>
     <div class="card-body">
       <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">

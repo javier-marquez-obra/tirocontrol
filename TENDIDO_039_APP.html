@@ -290,7 +290,10 @@ header{display:flex;align-items:center;justify-content:space-between;padding:10p
     <div class="h-left">
       <div class="h-logo">TiroControl</div>
       <div class="h-info" id="hInfo">—</div>
-      <div style="font-size:9px;color:var(--muted);opacity:.6" id="buildStamp">build 2026-08-14 10:05</div>
+      <!-- El sello estaba congelado en agosto, así que nunca sirvió para saber qué versión corría.
+           Ahora se actualiza en cada entrega y se puede picar para forzar la última. -->
+      <div id="buildStamp" onclick="forzarActualizacionApp()" title="Versión cargada. Clic para traer la última y limpiar el caché."
+        style="font-size:9.5px;color:var(--muted);opacity:.75;cursor:pointer;font-family:var(--mono,monospace)">v 08-Oct 19:37 · ↻</div>
     </div>
     <div class="h-right">
       <div class="sync-dot loading" id="syncDot"></div>
